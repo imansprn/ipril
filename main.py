@@ -217,8 +217,28 @@ class Bot:
         # Start the bot
         await application.initialize()
         await application.start()
-        await application.run_polling()
+        
+        try:
+            # Run the bot until Ctrl+C is pressed
+            await application.run_polling()
+        except asyncio.CancelledError:
+            logger.info("Received shutdown signal, stopping gracefully...")
+            await application.stop()
+        except Exception as e:
+            logger.error(f"Error running bot: {e}")
+            await application.stop()
+            raise
+        finally:
+            # Ensure application is stopped
+            if application.running:
+                await application.stop()
 
 if __name__ == "__main__":
     bot = Bot()
-    asyncio.run(bot.run()) 
+    try:
+        asyncio.run(bot.run())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Bot stopped due to error: {e}")
+        raise 
