@@ -206,6 +206,7 @@ class Bot:
 
     async def run(self):
         """Run the bot"""
+        # Build and configure the application
         application = Application.builder().token(self.token).build()
 
         # Add handlers
@@ -214,31 +215,25 @@ class Bot:
         application.add_handler(CommandHandler("currentlang", self.current_language))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.correct_message))
 
-        # Start the bot
-        await application.initialize()
-        await application.start()
-        
-        try:
-            # Run the bot until Ctrl+C is pressed
-            await application.run_polling()
-        except asyncio.CancelledError:
-            logger.info("Received shutdown signal, stopping gracefully...")
-            await application.stop()
-        except Exception as e:
-            logger.error(f"Error running bot: {e}")
-            await application.stop()
-            raise
-        finally:
-            # Ensure application is stopped
-            if application.running:
-                await application.stop()
+        # Run the bot
+        await application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            stop_signals=[],  # Disable default signal handlers
+            close_loop=False  # Let the caller handle loop closure
+        )
 
 if __name__ == "__main__":
     bot = Bot()
     try:
-        asyncio.run(bot.run())
+        # Set up and run the event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
         logger.error(f"Bot stopped due to error: {e}")
-        raise 
+        raise
+    finally:
+        # Clean up
+        loop.close() 
