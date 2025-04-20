@@ -41,12 +41,26 @@ A Telegram bot that helps users improve their writing in multiple languages usin
 
 2. Run the bot:
    ```bash
-   python bot.py
+   python main.py
    ```
+
+## Deployment with GitHub Actions
+
+The bot can be deployed for free using GitHub Actions (for public repositories):
+
+1. Go to your repository's Settings > Secrets and variables > Actions
+2. Add the following secrets:
+   - `BOT_TOKEN`: Your Telegram bot token
+   - `DEEPSEEK_API_KEY`: Your DeepSeek API key
+3. The workflow will automatically run on:
+   - Push to main branch
+   - Manual trigger (workflow_dispatch)
+
+The bot will run continuously on GitHub's servers. You can monitor its status in the Actions tab.
 
 ## File Structure
 
-- `bot.py` - Main bot implementation
+- `main.py` - Main bot implementation
 - `requirements.txt` - Python dependencies
 - `.env` - Environment variables (not in git)
 - `user_data.json` - User preferences storage
