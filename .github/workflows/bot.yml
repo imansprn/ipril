@@ -44,11 +44,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Run bot with nohup
+    - name: Run bot
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        DEPLOYMENT_ENV: "true"
       run: |
         # Kill any existing bot process
         if [ -f bot.pid ]; then
@@ -56,8 +55,8 @@ jobs:
           rm bot.pid
         fi
         
-        # Start the bot with more verbose logging
-        nohup python -u main.py > bot.log 2>&1 &
+        # Start the bot
+        python main.py > bot.log 2>&1 &
         echo $! > bot.pid
         
         # Wait and check if the bot is running
