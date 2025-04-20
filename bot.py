@@ -18,6 +18,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.error import Conflict
 
 # Load environment variables
 load_dotenv()
@@ -249,70 +250,34 @@ class Bot:
     async def run(self):
         """Run the bot"""
         try:
-            # Build and configure the application
-            logger.info("Initializing bot...")
+            # Create backups directory if it doesn't exist
+            Path("backups").mkdir(exist_ok=True)
+
+            # Initialize the bot
             application = Application.builder().token(self.token).build()
-            logger.info("Bot initialized successfully")
 
             # Add handlers
-            logger.info("Setting up command handlers...")
             application.add_handler(CommandHandler("start", self.start))
             application.add_handler(CommandHandler("setlang", self.set_language))
             application.add_handler(CommandHandler("currentlang", self.current_language))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.correct_message))
-            logger.info("Command handlers set up successfully")
 
-            # Run the bot
-            logger.info("Starting bot polling...")
+            # Start the bot
+            logger.info("Starting bot...")
             await application.initialize()
             await application.start()
-            await application.updater.start_polling()
-            
-            # Keep the bot running
-            while True:
-                try:
-                    await asyncio.sleep(1)
-                except asyncio.CancelledError:
-                    logger.info("Bot received cancellation signal")
-                    break
-                
+            await application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+        except Conflict as e:
+            logger.error(f"Bot conflict error: {e}")
+            # Wait for a short time before retrying
+            await asyncio.sleep(5)
+            # Try to run the bot again
+            await self.run()
         except Exception as e:
-            logger.error(f"Error in bot run method: {e}", exc_info=True)
+            logger.error(f"Unexpected error: {e}")
             raise
-        finally:
-            if application:
-                await application.stop()
-                await application.shutdown()
 
 if __name__ == "__main__":
     bot = Bot()
-    try:
-        logger.info("Starting bot...")
-        # Get the current event loop or create a new one
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        # Run the bot
-        if loop.is_running():
-            # If loop is already running (e.g., in GitHub Actions)
-            task = loop.create_task(bot.run())
-            try:
-                loop.run_forever()
-            except KeyboardInterrupt:
-                task.cancel()
-                loop.run_until_complete(task)
-        else:
-            # If loop is not running (e.g., running locally)
-            loop.run_until_complete(bot.run())
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-    except Exception as e:
-        logger.error(f"Bot stopped due to error: {e}", exc_info=True)
-        raise
-    finally:
-        # Clean up the event loop
-        if not loop.is_running():
-            loop.close() 
+    asyncio.run(bot.run()) 
