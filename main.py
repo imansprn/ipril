@@ -237,8 +237,15 @@ if __name__ == "__main__":
     bot = Bot()
     try:
         logger.info("Starting bot...")
-        # Use Application's built-in event loop management
-        asyncio.run(bot.run())
+        # Get the current event loop or create a new one
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        # Run the bot
+        loop.run_until_complete(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
