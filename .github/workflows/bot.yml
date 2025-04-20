@@ -50,7 +50,24 @@ jobs:
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         DEPLOYMENT_ENV: "true"
       run: |
-        nohup python main.py > bot.log 2>&1 &
+        # Kill any existing bot process
+        if [ -f bot.pid ]; then
+          kill $(cat bot.pid) 2>/dev/null || true
+          rm bot.pid
+        fi
+        
+        # Start the bot with more verbose logging
+        nohup python -u main.py > bot.log 2>&1 &
         echo $! > bot.pid
-        sleep 5
-        cat bot.log 
+        
+        # Wait and check if the bot is running
+        sleep 10
+        if ! ps -p $(cat bot.pid) > /dev/null; then
+          echo "Bot failed to start. Showing logs:"
+          cat bot.log
+          exit 1
+        fi
+        
+        # Show the last 50 lines of the log
+        echo "Bot started successfully. Showing recent logs:"
+        tail -n 50 bot.log 

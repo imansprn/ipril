@@ -25,7 +25,10 @@ load_dotenv()
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
-    filename="bot.log",
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()  # Add console output
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -206,30 +209,42 @@ class Bot:
 
     async def run(self):
         """Run the bot"""
-        # Build and configure the application
-        application = Application.builder().token(self.token).build()
+        try:
+            # Build and configure the application
+            logger.info("Initializing bot...")
+            application = Application.builder().token(self.token).build()
+            logger.info("Bot initialized successfully")
 
-        # Add handlers
-        application.add_handler(CommandHandler("start", self.start))
-        application.add_handler(CommandHandler("setlang", self.set_language))
-        application.add_handler(CommandHandler("currentlang", self.current_language))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.correct_message))
+            # Add handlers
+            logger.info("Setting up command handlers...")
+            application.add_handler(CommandHandler("start", self.start))
+            application.add_handler(CommandHandler("setlang", self.set_language))
+            application.add_handler(CommandHandler("currentlang", self.current_language))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.correct_message))
+            logger.info("Command handlers set up successfully")
 
-        # Run the bot
-        await application.run_polling(
-            allowed_updates=Update.ALL_TYPES,
-            stop_signals=[],  # Disable default signal handlers
-            close_loop=False  # Let the caller handle loop closure
-        )
+            # Run the bot
+            logger.info("Starting bot polling...")
+            await application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                stop_signals=[],  # Disable default signal handlers
+                close_loop=False  # Let the caller handle loop closure
+            )
+        except Exception as e:
+            logger.error(f"Error in bot run method: {e}", exc_info=True)
+            raise
 
 if __name__ == "__main__":
     bot = Bot()
     try:
+        logger.info("Starting bot...")
         # Check if we're in a deployment environment
         if os.getenv("DEPLOYMENT_ENV") == "true":
+            logger.info("Running in deployment environment")
             # In deployment, use the existing event loop
             asyncio.run(bot.run())
         else:
+            logger.info("Running in local environment")
             # In local development, create a new event loop
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -238,5 +253,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
-        logger.error(f"Bot stopped due to error: {e}")
+        logger.error(f"Bot stopped due to error: {e}", exc_info=True)
         raise 
