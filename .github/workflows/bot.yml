@@ -48,6 +48,7 @@ jobs:
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        DEPLOYMENT_ENV: "true"
       run: |
         nohup python main.py > bot.log 2>&1 &
         echo $! > bot.pid

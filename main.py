@@ -225,15 +225,18 @@ class Bot:
 if __name__ == "__main__":
     bot = Bot()
     try:
-        # Set up and run the event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(bot.run())
+        # Check if we're in a deployment environment
+        if os.getenv("DEPLOYMENT_ENV") == "true":
+            # In deployment, use the existing event loop
+            asyncio.run(bot.run())
+        else:
+            # In local development, create a new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(bot.run())
+            loop.close()
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
         logger.error(f"Bot stopped due to error: {e}")
-        raise
-    finally:
-        # Clean up
-        loop.close() 
+        raise 
