@@ -50,6 +50,9 @@ class TestBot:
         mock_token_builder.build = MagicMock(return_value=mock_application)
         
         # Make application methods async
+        mock_application.initialize = AsyncMock()
+        mock_application.start = AsyncMock()
+        mock_application.stop = AsyncMock()
         mock_application.run_polling = AsyncMock()
         mock_application.add_handler = MagicMock()
         
@@ -67,11 +70,13 @@ class TestBot:
             
             # Verify bot setup
             assert mock_application.add_handler.call_count == 4  # Should add 4 handlers
+            mock_application.initialize.assert_called_once()
+            mock_application.start.assert_called_once()
             mock_application.run_polling.assert_called_once_with(
                 allowed_updates=Update.ALL_TYPES,
-                stop_signals=[],
-                close_loop=False
+                stop_signals=[]
             )
+            mock_application.stop.assert_called_once()
 
     def test_load_user_data(self, bot):
         # Test loading user data

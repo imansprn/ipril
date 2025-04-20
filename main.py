@@ -225,14 +225,18 @@ class Bot:
 
             # Run the bot
             logger.info("Starting bot polling...")
+            await application.initialize()
+            await application.start()
             await application.run_polling(
                 allowed_updates=Update.ALL_TYPES,
-                stop_signals=[],  # Disable default signal handlers
-                close_loop=False  # Let the caller handle loop closure
+                stop_signals=[]  # Disable default signal handlers
             )
         except Exception as e:
             logger.error(f"Error in bot run method: {e}", exc_info=True)
             raise
+        finally:
+            if 'application' in locals():
+                await application.stop()
 
 if __name__ == "__main__":
     bot = Bot()
@@ -241,8 +245,10 @@ if __name__ == "__main__":
         # Check if we're in a deployment environment
         if os.getenv("DEPLOYMENT_ENV") == "true":
             logger.info("Running in deployment environment")
-            # In deployment, use the existing event loop
-            asyncio.run(bot.run())
+            # In deployment, use a new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(bot.run())
         else:
             logger.info("Running in local environment")
             # In local development, create a new event loop
