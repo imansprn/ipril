@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timedelta
 from pathlib import Path
-from main import Bot, UserData, Update
+from bot import Bot, UserData, Update
 import asyncio
 
 class TestUserData:
