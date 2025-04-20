@@ -231,7 +231,11 @@ class Bot:
             
             # Keep the bot running
             while True:
-                await asyncio.sleep(1)
+                try:
+                    await asyncio.sleep(1)
+                except asyncio.CancelledError:
+                    logger.info("Bot received cancellation signal")
+                    break
                 
         except Exception as e:
             logger.error(f"Error in bot run method: {e}", exc_info=True)
@@ -245,12 +249,25 @@ if __name__ == "__main__":
     bot = Bot()
     try:
         logger.info("Starting bot...")
-        # Create a new event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Get the current event loop or create a new one
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         
         # Run the bot
-        loop.run_until_complete(bot.run())
+        if loop.is_running():
+            # If loop is already running (e.g., in GitHub Actions)
+            task = loop.create_task(bot.run())
+            try:
+                loop.run_forever()
+            except KeyboardInterrupt:
+                task.cancel()
+                loop.run_until_complete(task)
+        else:
+            # If loop is not running (e.g., running locally)
+            loop.run_until_complete(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
@@ -258,4 +275,5 @@ if __name__ == "__main__":
         raise
     finally:
         # Clean up the event loop
-        loop.close() 
+        if not loop.is_running():
+            loop.close() 
