@@ -44,15 +44,6 @@ A Telegram bot that helps users improve their writing in multiple languages usin
    python bot.py
    ```
 
-## Deployment on Railway
-
-1. Create a new Railway project
-2. Connect your GitHub repository
-3. Add environment variables:
-   - `BOT_TOKEN`
-   - `DEEPSEEK_API_KEY`
-4. Deploy!
-
 ## File Structure
 
 - `bot.py` - Main bot implementation
