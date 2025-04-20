@@ -1,5 +1,9 @@
 # Ipril - Grammar Assistant Bot
 
+[![Tests](https://github.com/imansprn/ipril/actions/workflows/bot.yml/badge.svg)](https://github.com/imansprn/ipril/actions/workflows/bot.yml)
+[![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A Telegram bot that helps users improve their writing in multiple languages using AI-powered grammar correction.
 
 ## Features
@@ -9,6 +13,7 @@ A Telegram bot that helps users improve their writing in multiple languages usin
 - Rate limiting (15 requests/minute per user)
 - Automated daily backups
 - Error handling and logging
+- Unit tests for core functionality
 
 ## Commands
 
@@ -44,6 +49,11 @@ A Telegram bot that helps users improve their writing in multiple languages usin
    python main.py
    ```
 
+3. Run tests:
+   ```bash
+   pytest tests/ -v
+   ```
+
 ## Deployment with GitHub Actions
 
 The bot can be deployed for free using GitHub Actions (for public repositories):
@@ -58,6 +68,19 @@ The bot can be deployed for free using GitHub Actions (for public repositories):
 
 The bot will run continuously on GitHub's servers. You can monitor its status in the Actions tab.
 
+## Testing
+
+The project includes unit tests for core functionality:
+- User data management
+- Rate limiting
+- Bot initialization
+- Data persistence
+
+Run tests locally:
+```bash
+pytest tests/ -v
+```
+
 ## File Structure
 
 - `main.py` - Main bot implementation
@@ -66,6 +89,7 @@ The bot will run continuously on GitHub's servers. You can monitor its status in
 - `user_data.json` - User preferences storage
 - `backups/` - Daily backups of user data
 - `bot.log` - Application logs
+- `tests/` - Unit tests
 
 ## Error Handling
 
