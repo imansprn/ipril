@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import aiofiles
+import aiohttp
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
@@ -178,6 +179,47 @@ class Bot:
             f"Your current language is {SUPPORTED_LANGUAGES[lang_code]}"
         )
 
+    async def call_deepseek_api(self, text: str, language: str) -> str:
+        """Call DeepSeek API for grammar correction"""
+        url = "https://api.deepseek.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        prompt = f"Correct the following {SUPPORTED_LANGUAGES[language]} text and provide a follow-up question: {text}"
+        
+        data = {
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 150
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    response_text = result["choices"][0]["message"]["content"]
+                    
+                    # Extract the correction from the response
+                    if response_text.startswith("[Correction: ") and "] " in response_text:
+                        correction = response_text.split("[Correction: ")[1].split("] ")[0]
+                        follow_up = response_text.split("] ")[1]
+                        
+                        # If the correction is the same as the input, just return the follow-up question
+                        if correction.strip() == text.strip():
+                            return follow_up
+                            
+                    return response_text
+                else:
+                    error_text = await response.text()
+                    logger.error(f"DeepSeek API error: {error_text}")
+                    raise Exception(f"API error: {error_text}")
+
     async def correct_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle incoming messages for grammar correction"""
         user_id = update.effective_user.id
@@ -196,10 +238,7 @@ class Bot:
         text = update.message.text
 
         try:
-            # Here you would implement the actual API call to DeepSeek
-            # This is a placeholder for the API integration
-            corrected_text = f"[Correction: {text}] What's your favorite subject?"
-            
+            corrected_text = await self.call_deepseek_api(text, user.language)
             await update.message.reply_text(corrected_text)
         except Exception as e:
             logger.error(f"Error processing message: {e}")
