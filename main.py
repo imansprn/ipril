@@ -227,10 +227,13 @@ class Bot:
             logger.info("Starting bot polling...")
             await application.initialize()
             await application.start()
-            await application.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                close_loop=False
-            )
+            await application.updater.start_polling()
+            await application.start()
+            
+            # Keep the bot running
+            while True:
+                await asyncio.sleep(1)
+                
         except Exception as e:
             logger.error(f"Error in bot run method: {e}", exc_info=True)
             raise
@@ -243,22 +246,17 @@ if __name__ == "__main__":
     bot = Bot()
     try:
         logger.info("Starting bot...")
-        # Get the current event loop or create a new one
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # Create a new event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         
         # Run the bot
-        if loop.is_running():
-            # If loop is already running (e.g., in GitHub Actions)
-            loop.create_task(bot.run())
-        else:
-            # If loop is not running (e.g., running locally)
-            loop.run_until_complete(bot.run())
+        loop.run_until_complete(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
         logger.error(f"Bot stopped due to error: {e}", exc_info=True)
-        raise 
+        raise
+    finally:
+        # Clean up the event loop
+        loop.close() 
