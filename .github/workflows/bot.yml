@@ -56,7 +56,7 @@ jobs:
         fi
         
         # Start the bot
-        python main.py > bot.log 2>&1 &
+        python bot.py > bot.log 2>&1 &
         echo $! > bot.pid
         
         # Wait and check if the bot is running

@@ -46,7 +46,7 @@ A Telegram bot that helps users improve their writing in multiple languages usin
 
 2. Run the bot:
    ```bash
-   python main.py
+   python bot.py
    ```
 
 3. Run tests:
@@ -83,7 +83,7 @@ pytest tests/ -v
 
 ## File Structure
 
-- `main.py` - Main bot implementation
+- `bot.py` - Main bot implementation
 - `requirements.txt` - Python dependencies
 - `.env` - Environment variables (not in git)
 - `user_data.json` - User preferences storage
