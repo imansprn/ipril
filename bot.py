@@ -228,7 +228,6 @@ class Bot:
             await application.initialize()
             await application.start()
             await application.updater.start_polling()
-            await application.start()
             
             # Keep the bot running
             while True:
