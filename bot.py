@@ -264,17 +264,15 @@ class Bot:
 
             # Start the bot
             logger.info("Starting bot...")
+            
+            # Run the bot
             await application.initialize()
             await application.start()
+            await application.updater.start_polling()
             
-            # Run the bot with proper error handling
-            try:
-                await application.run_polling(allowed_updates=Update.ALL_TYPES)
-            except asyncio.CancelledError:
-                logger.info("Bot received cancellation signal")
-            finally:
-                await application.stop()
-                await application.shutdown()
+            # Keep the bot running
+            while True:
+                await asyncio.sleep(1)
 
         except Conflict as e:
             logger.error(f"Bot conflict error: {e}")
@@ -282,13 +280,20 @@ class Bot:
             await asyncio.sleep(5)
             # Try to run the bot again
             await self.run()
+        except asyncio.CancelledError:
+            logger.info("Bot received cancellation signal")
+            # Cleanup
+            if 'application' in locals():
+                await application.stop()
+                await application.shutdown()
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             raise
 
 if __name__ == "__main__":
-    bot = Bot()
     try:
+        # Create and run the bot
+        bot = Bot()
         asyncio.run(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")

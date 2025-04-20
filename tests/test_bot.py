@@ -39,53 +39,49 @@ class TestBot:
         # Create mock application class
         mock_application_class = AsyncMock()
         mock_application = AsyncMock()
-        mock_updater = AsyncMock()
-        
+
         # Set up the builder chain
         mock_builder = AsyncMock()
         mock_token_builder = AsyncMock()
-        
+
         # Configure the mock chain
         mock_application_class.builder = MagicMock(return_value=mock_builder)
         mock_builder.token = MagicMock(return_value=mock_token_builder)
         mock_token_builder.build = MagicMock(return_value=mock_application)
-        
+
         # Make application methods async
         mock_application.add_handler = MagicMock()
         mock_application.initialize = AsyncMock()
         mock_application.start = AsyncMock()
         mock_application.stop = AsyncMock()
         mock_application.shutdown = AsyncMock()
-        mock_application.updater = mock_updater
-        mock_updater.start_polling = AsyncMock()
-        
+        mock_application.updater.start_polling = AsyncMock()
+
         with patch('bot.Application', mock_application_class):
             # Create a task for the bot
             bot_task = asyncio.create_task(bot.run())
-            
+
             # Wait a short time for initialization
             await asyncio.sleep(0.1)
-            
+
             # Cancel the bot task
             bot_task.cancel()
-            
+
             try:
                 await bot_task
             except asyncio.CancelledError:
                 pass  # Expected when the bot is stopped
-            
+
             # Verify the initialization chain
             mock_application_class.builder.assert_called_once()
             mock_builder.token.assert_called_with("test_token")
             mock_token_builder.build.assert_called_once()
-            
+
             # Verify bot setup
             assert mock_application.add_handler.call_count == 4  # Should add 4 handlers
             mock_application.initialize.assert_called_once()
             mock_application.start.assert_called_once()
-            mock_updater.start_polling.assert_called_once()
-            
-            # Verify cleanup
+            mock_application.updater.start_polling.assert_called_once()
             mock_application.stop.assert_called_once()
             mock_application.shutdown.assert_called_once()
 
