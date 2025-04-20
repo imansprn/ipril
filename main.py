@@ -225,6 +225,8 @@ class Bot:
 
             # Run the bot
             logger.info("Starting bot polling...")
+            await application.initialize()
+            await application.start()
             await application.run_polling(
                 allowed_updates=Update.ALL_TYPES,
                 close_loop=False
@@ -232,6 +234,10 @@ class Bot:
         except Exception as e:
             logger.error(f"Error in bot run method: {e}", exc_info=True)
             raise
+        finally:
+            if application:
+                await application.stop()
+                await application.shutdown()
 
 if __name__ == "__main__":
     bot = Bot()
@@ -245,7 +251,12 @@ if __name__ == "__main__":
             asyncio.set_event_loop(loop)
         
         # Run the bot
-        loop.run_until_complete(bot.run())
+        if loop.is_running():
+            # If loop is already running (e.g., in GitHub Actions)
+            loop.create_task(bot.run())
+        else:
+            # If loop is not running (e.g., running locally)
+            loop.run_until_complete(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
