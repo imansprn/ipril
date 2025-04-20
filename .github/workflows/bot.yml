@@ -22,8 +22,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Run bot
+    - name: Run bot with nohup
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      run: python main.py 
+      run: |
+        nohup python main.py > bot.log 2>&1 &
+        echo $! > bot.pid
+        sleep 5
+        cat bot.log 
