@@ -53,7 +53,7 @@ class TestBot:
         mock_application.run_polling = AsyncMock()
         mock_application.add_handler = MagicMock()
         
-        with patch('main.Application', mock_application_class):
+        with patch('bot.Application', mock_application_class):
             try:
                 # Test bot initialization
                 await bot.run()
