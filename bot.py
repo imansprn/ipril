@@ -29,7 +29,7 @@ logging.basicConfig(
     level=logging.INFO,
     handlers=[
         logging.FileHandler("bot.log"),
-        logging.StreamHandler()  # Add console output
+        logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
@@ -58,6 +58,7 @@ Input: "He go to school"
 Output: "[Correction: He goes to school] Do you like school?"
 """
 
+
 class UserData:
     def __init__(self, user_id: int):
         self.user_id = user_id
@@ -75,6 +76,7 @@ class UserData:
 
     def add_request(self):
         self.last_requests.append(datetime.now())
+
 
 class Bot:
     def __init__(self):
@@ -115,7 +117,7 @@ class Bot:
             backup_file.parent.mkdir(exist_ok=True)
             if self.data_file.exists():
                 async with aiofiles.open(self.data_file, "r") as src, \
-                          aiofiles.open(backup_file, "w") as dst:
+                        aiofiles.open(backup_file, "w") as dst:
                     await dst.write(await src.read())
         except Exception as e:
             logger.error(f"Error creating backup: {e}")
@@ -138,10 +140,28 @@ class Bot:
             "🇷🇺 Russian (ru)\n\n"
             "Commands:\n"
             "/setlang [code] - Change language\n"
-            "/currentlang - Show current language\n\n"
+            "/currentlang - Show current language\n"
+            "/help - Show help message\n\n"
             "Just send me a message and I'll help correct it!"
         )
         await update.message.reply_text(welcome_message)
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle the /help command"""
+        help_message = (
+            "📚 Ipril Help Guide 📚\n\n"
+            "How to use me:\n"
+            "1. Send me any text message\n"
+            "2. I'll correct the grammar and ask a follow-up question\n"
+            "3. Continue the conversation naturally!\n\n"
+            "Available commands:\n"
+            "/start - Welcome message\n"
+            "/setlang [code] - Change language (e.g., /setlang es)\n"
+            "/currentlang - Show your current language\n"
+            "/help - This help message\n\n"
+            "Supported languages: en, es, fr, de, it, ru"
+        )
+        await update.message.reply_text(help_message)
 
     async def set_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle the /setlang command"""
@@ -187,9 +207,9 @@ class Bot:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
+
         prompt = f"Correct the following {SUPPORTED_LANGUAGES[language]} text and provide a follow-up question: {text}"
-        
+
         data = {
             "model": "deepseek-chat",
             "messages": [
@@ -201,25 +221,28 @@ class Bot:
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=data) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    response_text = result["choices"][0]["message"]["content"]
-                    
-                    # Extract the correction from the response
-                    if response_text.startswith("[Correction: ") and "] " in response_text:
-                        correction = response_text.split("[Correction: ")[1].split("] ")[0]
-                        follow_up = response_text.split("] ")[1]
-                        
-                        # If the correction is the same as the input, just return the follow-up question
-                        if correction.strip() == text.strip():
-                            return follow_up
-                            
-                    return response_text
-                else:
-                    error_text = await response.text()
-                    logger.error(f"DeepSeek API error: {error_text}")
-                    raise Exception(f"API error: {error_text}")
+            try:
+                async with session.post(url, headers=headers, json=data) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        response_text = result["choices"][0]["message"]["content"]
+
+                        # Extract the correction from the response
+                        if response_text.startswith("[Correction: ") and "] " in response_text:
+                            correction = response_text.split("[Correction: ")[1].split("] ")[0]
+                            follow_up = response_text.split("] ")[1]
+
+                            if correction.strip() == text.strip():
+                                return follow_up
+
+                        return response_text
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"DeepSeek API error: {error_text}")
+                        return "Sorry, I encountered an error with the grammar service. Please try again later."
+            except Exception as e:
+                logger.error(f"Network error calling DeepSeek API: {e}")
+                return "Sorry, I'm having trouble connecting to the grammar service. Please try again later."
 
     async def correct_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle incoming messages for grammar correction"""
@@ -239,6 +262,8 @@ class Bot:
         text = update.message.text
 
         try:
+            # Send typing action to show the bot is working
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
             corrected_text = await self.call_deepseek_api(text, user.language)
             await update.message.reply_text(corrected_text)
         except Exception as e:
@@ -248,7 +273,7 @@ class Bot:
             )
 
     async def run(self):
-        """Run the bot"""
+        """Run the bot with proper event loop handling"""
         try:
             # Create backups directory if it doesn't exist
             Path("backups").mkdir(exist_ok=True)
@@ -258,41 +283,44 @@ class Bot:
 
             # Add handlers
             application.add_handler(CommandHandler("start", self.start))
+            application.add_handler(CommandHandler("help", self.help_command))
             application.add_handler(CommandHandler("setlang", self.set_language))
             application.add_handler(CommandHandler("currentlang", self.current_language))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.correct_message))
 
-            # Start the bot
             logger.info("Starting bot...")
-            
-            # Run the bot with proper error handling
-            try:
-                await application.initialize()
-                await application.start()
-                await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-            except asyncio.CancelledError:
-                logger.info("Bot received cancellation signal")
-            finally:
-                await application.stop()
-                await application.shutdown()
 
-        except Conflict as e:
-            logger.error(f"Bot conflict error: {e}")
-            # Wait for a short time before retrying
-            await asyncio.sleep(5)
-            # Try to run the bot again
-            await self.run()
+            # Run the bot with proper lifecycle management
+            await application.initialize()
+            await application.start()
+            await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+
+            # Keep the bot running until interrupted
+            while True:
+                await asyncio.sleep(1)
+
+        except asyncio.CancelledError:
+            logger.info("Bot shutdown requested...")
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             raise
+        finally:
+            # Proper shutdown sequence
+            if 'application' in locals():
+                try:
+                    await application.updater.stop()
+                    await application.stop()
+                    await application.shutdown()
+                except Exception as e:
+                    logger.error(f"Error during shutdown: {e}")
+
 
 if __name__ == "__main__":
     try:
-        # Create and run the bot
         bot = Bot()
         asyncio.run(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
         logger.error(f"Bot stopped due to error: {e}")
-        raise 
+        raise
