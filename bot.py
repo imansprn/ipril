@@ -64,10 +64,10 @@ class UserData:
         self.user_id = user_id
         self.language = "en"  # Default language
         self.last_requests = []
+        self.message_history = []  # 👈 Each item: {"role": "user"/"assistant", "content": "..."}
 
     def can_make_request(self) -> bool:
         now = datetime.now()
-        # Remove requests older than the rate limit window
         self.last_requests = [
             req_time for req_time in self.last_requests
             if (now - req_time).total_seconds() < RATE_LIMIT_WINDOW
@@ -77,6 +77,24 @@ class UserData:
     def add_request(self):
         self.last_requests.append(datetime.now())
 
+<<<<<<< Updated upstream
+=======
+    def add_user_message(self, text: str):
+        """Add a user message to history (keep max 5 pairs)"""
+        self.message_history.append({"role": "user", "content": text})
+        self._trim_history()
+
+    def add_assistant_message(self, text: str):
+        """Add a bot/assistant message to history"""
+        self.message_history.append({"role": "assistant", "content": text})
+        self._trim_history()
+
+    def _trim_history(self):
+        """Keep only last 5 user+assistant pairs (max 10 messages)"""
+        if len(self.message_history) > 10:
+            self.message_history = self.message_history[-10:]
+
+>>>>>>> Stashed changes
 
 class Bot:
     def __init__(self):
@@ -200,24 +218,26 @@ class Bot:
             f"Your current language is {SUPPORTED_LANGUAGES[lang_code]}"
         )
 
-    async def call_deepseek_api(self, text: str, language: str) -> str:
-        """Call DeepSeek API for grammar correction"""
+    async def call_deepseek_api(self, user: UserData) -> str:
+        """Call DeepSeek API with full chat history"""
         url = "https://api.deepseek.com/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
+<<<<<<< Updated upstream
         prompt = f"Correct the following {SUPPORTED_LANGUAGES[language]} text and provide a follow-up question: {text}"
+=======
+        system_prompt = SYSTEM_PROMPT
+        history_messages = user.message_history.copy()
+>>>>>>> Stashed changes
 
         data = {
             "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "system", "content": system_prompt}] + history_messages,
             "temperature": 0.7,
-            "max_tokens": 150
+            "max_tokens": 300
         }
 
         async with aiohttp.ClientSession() as session:
@@ -227,6 +247,7 @@ class Bot:
                         result = await response.json()
                         response_text = result["choices"][0]["message"]["content"]
 
+<<<<<<< Updated upstream
                         # Extract the correction from the response
                         if response_text.startswith("[Correction: ") and "] " in response_text:
                             correction = response_text.split("[Correction: ")[1].split("] ")[0]
@@ -239,6 +260,13 @@ class Bot:
                     else:
                         error_text = await response.text()
                         logger.error(f"DeepSeek API error: {error_text}")
+=======
+                        # Expect format: [Correction: CORRECTED_TEXT] FOLLOW_UP_QUESTION
+                        return response_text
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"DeepSeek API error {response.status}: {error_text}")
+>>>>>>> Stashed changes
                         return "Sorry, I encountered an error with the grammar service. Please try again later."
             except Exception as e:
                 logger.error(f"Network error calling DeepSeek API: {e}")
@@ -260,12 +288,28 @@ class Bot:
 
         user.add_request()
         text = update.message.text
+        user.add_user_message(text)  # 👈 SAVE user message first
 
         try:
+<<<<<<< Updated upstream
             # Send typing action to show the bot is working
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
             corrected_text = await self.call_deepseek_api(text, user.language)
             await update.message.reply_text(corrected_text)
+=======
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+            corrected_text = await self.call_deepseek_api(user)
+
+            # Check if the corrected text is the same as the original message
+            if corrected_text.startswith(f"[Correction: {text}]"):
+                # If no correction is needed, simply say the message is correct
+                await update.message.reply_text("Your message is already correct! ✅")
+            else:
+                await update.message.reply_text(corrected_text)
+
+            user.add_assistant_message(corrected_text)  # 👈 SAVE bot reply
+
+>>>>>>> Stashed changes
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             await update.message.reply_text(
@@ -323,4 +367,8 @@ if __name__ == "__main__":
         logger.info("Bot stopped by user")
     except Exception as e:
         logger.error(f"Bot stopped due to error: {e}")
+<<<<<<< Updated upstream
         raise
+=======
+        raise
+>>>>>>> Stashed changes
