@@ -77,8 +77,6 @@ class UserData:
     def add_request(self):
         self.last_requests.append(datetime.now())
 
-<<<<<<< Updated upstream
-=======
     def add_user_message(self, text: str):
         """Add a user message to history (keep max 5 pairs)"""
         self.message_history.append({"role": "user", "content": text})
@@ -94,7 +92,6 @@ class UserData:
         if len(self.message_history) > 10:
             self.message_history = self.message_history[-10:]
 
->>>>>>> Stashed changes
 
 class Bot:
     def __init__(self):
@@ -226,12 +223,8 @@ class Bot:
             "Content-Type": "application/json"
         }
 
-<<<<<<< Updated upstream
-        prompt = f"Correct the following {SUPPORTED_LANGUAGES[language]} text and provide a follow-up question: {text}"
-=======
         system_prompt = SYSTEM_PROMPT
         history_messages = user.message_history.copy()
->>>>>>> Stashed changes
 
         data = {
             "model": "deepseek-chat",
@@ -247,26 +240,11 @@ class Bot:
                         result = await response.json()
                         response_text = result["choices"][0]["message"]["content"]
 
-<<<<<<< Updated upstream
-                        # Extract the correction from the response
-                        if response_text.startswith("[Correction: ") and "] " in response_text:
-                            correction = response_text.split("[Correction: ")[1].split("] ")[0]
-                            follow_up = response_text.split("] ")[1]
-
-                            if correction.strip() == text.strip():
-                                return follow_up
-
-                        return response_text
-                    else:
-                        error_text = await response.text()
-                        logger.error(f"DeepSeek API error: {error_text}")
-=======
                         # Expect format: [Correction: CORRECTED_TEXT] FOLLOW_UP_QUESTION
                         return response_text
                     else:
                         error_text = await response.text()
                         logger.error(f"DeepSeek API error {response.status}: {error_text}")
->>>>>>> Stashed changes
                         return "Sorry, I encountered an error with the grammar service. Please try again later."
             except Exception as e:
                 logger.error(f"Network error calling DeepSeek API: {e}")
@@ -291,12 +269,6 @@ class Bot:
         user.add_user_message(text)  # 👈 SAVE user message first
 
         try:
-<<<<<<< Updated upstream
-            # Send typing action to show the bot is working
-            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-            corrected_text = await self.call_deepseek_api(text, user.language)
-            await update.message.reply_text(corrected_text)
-=======
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
             corrected_text = await self.call_deepseek_api(user)
 
@@ -309,7 +281,6 @@ class Bot:
 
             user.add_assistant_message(corrected_text)  # 👈 SAVE bot reply
 
->>>>>>> Stashed changes
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             await update.message.reply_text(
@@ -367,8 +338,4 @@ if __name__ == "__main__":
         logger.info("Bot stopped by user")
     except Exception as e:
         logger.error(f"Bot stopped due to error: {e}")
-<<<<<<< Updated upstream
         raise
-=======
-        raise
->>>>>>> Stashed changes
