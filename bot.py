@@ -17,8 +17,8 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
+    ConversationHandler,
 )
-from telegram.error import Conflict
 from langdetect import detect, LangDetectException
 
 # Load environment variables
@@ -57,36 +57,14 @@ CORRECTION_LABELS = {
 RATE_LIMIT = 15  # requests per minute
 RATE_LIMIT_WINDOW = 60  # seconds
 
-# System prompt for DeepSeek API
 SYSTEM_PROMPT = """You are a grammar correction assistant. Your task is to:
 1. Correct grammar mistakes in the given text while keeping it in the same language
 2. Provide a friendly follow-up question in the user's chosen language
 3. Format your response as: "[CORRECTION_LABEL CORRECTED_TEXT] FOLLOW_UP_QUESTION"
-
-Example for English input:
-Input: "He go to school"
-Output: "[Correction: He goes to school] Do you like school?"
-
-Example for Spanish input:
-Input: "Yo ir al parque"
-Output: "[Corrección: Yo voy al parque] ¿Qué te gusta hacer en el parque?"
-
-Example for French input:
-Input: "Je mange un pomme"
-Output: "[Correction: Je mange une pomme] Aimes-tu les fruits?"
-
-Example for German input:
-Input: "Ich gehe in der Park"
-Output: "[Korrektur: Ich gehe in den Park] Was machst du gerne im Park?"
-
-Example for Italian input:
-Input: "Io mangiare la pizza"
-Output: "[Correzione: Io mangio la pizza] Qual è la tua pizza preferita?"
-
-Example for Russian input:
-Input: "Я ходить в магазин"
-Output: "[Исправление: Я хожу в магазин] Что ты обычно покупаешь в магазине?"
 """
+
+CONFIRM_LANGUAGE = 1
+
 
 class UserData:
     def __init__(self, user_id: int):
@@ -123,6 +101,7 @@ class UserData:
         """Keep only last 5 user+assistant pairs (max 10 messages)"""
         if len(self.message_history) > 10:
             self.message_history = self.message_history[-10:]
+
 
 class Bot:
     def __init__(self):
@@ -285,8 +264,34 @@ class Bot:
                 logger.error(f"Network error calling DeepSeek API: {e}")
                 return "Sorry, I encountered an error with the grammar service. Please try again later."
 
+    async def confirm_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = context.user_data.get("user")
+        detected_lang = context.user_data.get("detected_lang")
+
+        if detected_lang != user.language:
+            await update.message.reply_text(
+                f"Your message is in {detected_lang.upper()}, but your selected language is {user.language.upper()}. "
+                "Would you like to switch the language? (yes/no)"
+            )
+            return CONFIRM_LANGUAGE
+
+    async def handle_language_response(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = context.user_data.get("user")
+        detected_lang = context.user_data.get("detected_lang")
+        response = update.message.text.strip().lower()
+
+        if response == "yes":
+            user.language = detected_lang
+            await update.message.reply_text(f"Language switched to {detected_lang.upper()}.")
+        elif response == "no":
+            await update.message.reply_text("Okay, keeping the current language.")
+        else:
+            await update.message.reply_text("Please respond with 'yes' or 'no'.")
+            return CONFIRM_LANGUAGE
+
+        return ConversationHandler.END
+
     async def correct_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming messages for grammar correction"""
         user_id = update.effective_user.id
         if user_id not in self.users:
             self.users[user_id] = UserData(user_id)
@@ -310,10 +315,9 @@ class Bot:
             detected_lang = 'en'  # Fallback to English if detection fails
 
         if detected_lang != user.language:
-            await update.message.reply_text(
-                f"Your message is in {detected_lang.upper()}, but your selected language is {user.language.upper()}. "
-                "Would you like to switch the language? (yes/no)"
-            )
+            context.user_data["user"] = user
+            context.user_data["detected_lang"] = detected_lang
+            await self.confirm_language(update, context)
             return
 
         try:
@@ -349,7 +353,15 @@ class Bot:
             application.add_handler(CommandHandler("help", self.help_command))
             application.add_handler(CommandHandler("setlang", self.set_language))
             application.add_handler(CommandHandler("currentlang", self.current_language))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.correct_message))
+
+            conv_handler = ConversationHandler(
+                entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, self.correct_message)],
+                states={
+                    CONFIRM_LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_language_response)],
+                },
+                fallbacks=[],
+            )
+            application.add_handler(conv_handler)
 
             logger.info("Starting bot...")
 
