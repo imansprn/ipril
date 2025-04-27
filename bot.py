@@ -44,18 +44,47 @@ SUPPORTED_LANGUAGES = {
     "ru": "Russian",
 }
 
+CORRECTION_LABELS = {
+    "en": "Correction:",
+    "es": "Corrección:",
+    "fr": "Correction:",
+    "de": "Korrektur:",
+    "it": "Correzione:",
+    "ru": "Исправление:"
+}
+
 RATE_LIMIT = 15  # requests per minute
 RATE_LIMIT_WINDOW = 60  # seconds
 
 # System prompt for DeepSeek API
 SYSTEM_PROMPT = """You are a grammar correction assistant. Your task is to:
-1. Correct grammar mistakes in the given text
-2. Provide a friendly follow-up question related to the corrected content
-3. Format your response as: "[Correction: CORRECTED_TEXT] FOLLOW_UP_QUESTION"
+1. Correct grammar mistakes in the given text while keeping it in the same language
+2. Provide a friendly follow-up question in the user's chosen language
+3. Format your response as: "[CORRECTION_LABEL CORRECTED_TEXT] FOLLOW_UP_QUESTION"
 
-Example:
+Example for English input:
 Input: "He go to school"
 Output: "[Correction: He goes to school] Do you like school?"
+
+Example for Spanish input:
+Input: "Yo ir al parque"
+Output: "[Corrección: Yo voy al parque] ¿Qué te gusta hacer en el parque?"
+
+Example for French input:
+Input: "Je mange un pomme"
+Output: "[Correction: Je mange une pomme] Aimes-tu les fruits?"
+
+Example for German input:
+Input: "Ich gehe in der Park"
+Output: "[Korrektur: Ich gehe in den Park] Was machst du gerne im Park?"
+
+Example for Italian input:
+Input: "Io mangiare la pizza"
+Output: "[Correzione: Io mangio la pizza] Qual è la tua pizza preferita?"
+
+Example for Russian input:
+Input: "Я ходить в магазин"
+Output: "[Исправление: Я хожу в магазин] Что ты обычно покупаешь в магазине?"
 """
 
 
@@ -223,7 +252,30 @@ class Bot:
             "Content-Type": "application/json"
         }
 
-        system_prompt = SYSTEM_PROMPT
+        # Get the last user message to determine input language
+        last_user_message = next(
+            (msg["content"] for msg in reversed(user.message_history) 
+             if msg["role"] == "user"),
+            ""
+        )
+
+        # Determine input language based on the message content
+        input_lang = "en"  # Default to English
+        for lang_code in SUPPORTED_LANGUAGES:
+            if any(word in last_user_message for word in [
+                "je", "tu", "il", "elle",  # French
+                "yo", "tú", "él", "ella",  # Spanish
+                "ich", "du", "er", "sie",   # German
+                "io", "tu", "lui", "lei",   # Italian
+                "я", "ты", "он", "она"      # Russian
+            ]):
+                input_lang = lang_code
+                break
+
+        system_prompt = SYSTEM_PROMPT.replace(
+            "CORRECTION_LABEL", 
+            CORRECTION_LABELS.get(input_lang, "Correction:")
+        )
         history_messages = user.message_history.copy()
 
         data = {
@@ -239,8 +291,6 @@ class Bot:
                     if response.status == 200:
                         result = await response.json()
                         response_text = result["choices"][0]["message"]["content"]
-
-                        # Expect format: [Correction: CORRECTED_TEXT] FOLLOW_UP_QUESTION
                         return response_text
                     else:
                         error_text = await response.text()
@@ -248,7 +298,7 @@ class Bot:
                         return "Sorry, I encountered an error with the grammar service. Please try again later."
             except Exception as e:
                 logger.error(f"Network error calling DeepSeek API: {e}")
-                return "Sorry, I'm having trouble connecting to the grammar service. Please try again later."
+                return "Sorry, I encountered an error with the grammar service. Please try again later."
 
     async def correct_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle incoming messages for grammar correction"""

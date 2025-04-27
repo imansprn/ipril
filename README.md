@@ -34,43 +34,62 @@ Here are some examples of how the bot corrects grammar and engages in conversati
 
 ### 🇺🇸 English (en)
 ```
-User: "I goes to the store yesterday"
-Bot: "[Correction: I went to the store yesterday] What did you buy at the store?"
+User: /setlang en
+Bot: Language set to English!
+
+User: "Je mange un pomme"
+Bot: "[Correction: Je mange une pomme] What do you like to eat?"
 ```
 
 ### 🇪🇸 Spanish (es)
 ```
-User: "Yo ir al parque mañana"
-Bot: "[Correction: Yo iré al parque mañana] ¿Qué te gusta hacer en el parque?"
+User: /setlang es
+Bot: ¡Idioma configurado a español!
+
+User: "I goes to the store"
+Bot: "[Corrección: I go to the store] ¿Qué te gusta comprar en la tienda?"
 ```
 
 ### 🇫🇷 French (fr)
 ```
-User: "Je mange un pomme"
-Bot: "[Correction: Je mange une pomme] Aimes-tu les fruits en général?"
+User: /setlang fr
+Bot: Langue définie sur français !
+
+User: "Ich gehe in der Park"
+Bot: "[Correction: Ich gehe in den Park] Qu'aimes-tu faire au parc?"
 ```
 
 ### 🇩🇪 German (de)
 ```
-User: "Ich gehe in der Park"
-Bot: "[Correction: Ich gehe in den Park] Was machst du gerne im Park?"
+User: /setlang de
+Bot: Sprache auf Deutsch eingestellt!
+
+User: "Io mangiare la pizza"
+Bot: "[Korrektur: Io mangio la pizza] Was isst du gerne?"
 ```
 
 ### 🇮🇹 Italian (it)
 ```
-User: "Io mangiare la pizza"
-Bot: "[Correction: Io mangio la pizza] Qual è la tua pizza preferita?"
+User: /setlang it
+Bot: Lingua impostata su italiano!
+
+User: "Я ходить в магазин"
+Bot: "[Correzione: Я хожу в магазин] Cosa ti piace comprare?"
 ```
 
 ### 🇷🇺 Russian (ru)
 ```
-User: "Я ходить в магазин"
-Bot: "[Correction: Я хожу в магазин] Что ты обычно покупаешь в магазине?"
+User: /setlang ru
+Bot: Язык установлен на русский!
+
+User: "Yo ir al parque"
+Bot: "[Исправление: Yo voy al parque] Что тебе нравится делать в парке?"
 ```
 
 The bot not only corrects grammar but also:
 - Maintains conversation context
-- Asks relevant follow-up questions
+- Corrects grammar in the input language (including the "Correction:" text)
+- Asks follow-up questions in the chosen language
 - Supports 6 languages
 - Remembers user preferences
 - Has a rate limit of 15 requests per minute
