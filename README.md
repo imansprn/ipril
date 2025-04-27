@@ -55,8 +55,8 @@ Bot: "[Corrección: I go to the store] ¿Qué te gusta comprar en la tienda?"
 User: /setlang fr
 Bot: Langue définie sur français !
 
-User: "Ich gehe in der Park"
-Bot: "[Correction: Ich gehe in den Park] Qu'aimes-tu faire au parc?"
+User: "Je vais au parc"
+Bot: "[Correction: Je vais au parc] Qu'aimes-tu faire au parc?"
 ```
 
 ### 🇩🇪 German (de)

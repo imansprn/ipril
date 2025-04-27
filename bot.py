@@ -101,7 +101,10 @@ class UserData:
             req_time for req_time in self.last_requests
             if (now - req_time).total_seconds() < RATE_LIMIT_WINDOW
         ]
-        return len(self.last_requests) < RATE_LIMIT
+        if len(self.last_requests) >= RATE_LIMIT:
+            return False
+        self.last_requests.append(now)
+        return True
 
     def add_request(self):
         self.last_requests.append(datetime.now())
@@ -120,7 +123,6 @@ class UserData:
         """Keep only last 5 user+assistant pairs (max 10 messages)"""
         if len(self.message_history) > 10:
             self.message_history = self.message_history[-10:]
-
 
 class Bot:
     def __init__(self):
@@ -252,25 +254,8 @@ class Bot:
             "Content-Type": "application/json"
         }
 
-        # Get the last user message to determine input language
-        last_user_message = next(
-            (msg["content"] for msg in reversed(user.message_history) 
-             if msg["role"] == "user"),
-            ""
-        )
-
-        # Determine input language based on the message content
-        input_lang = "en"  # Default to English
-        for lang_code in SUPPORTED_LANGUAGES:
-            if any(word in last_user_message for word in [
-                "je", "tu", "il", "elle",  # French
-                "yo", "tú", "él", "ella",  # Spanish
-                "ich", "du", "er", "sie",   # German
-                "io", "tu", "lui", "lei",   # Italian
-                "я", "ты", "он", "она"      # Russian
-            ]):
-                input_lang = lang_code
-                break
+        # Use the user's set language instead of trying to detect it
+        input_lang = user.language
 
         system_prompt = SYSTEM_PROMPT.replace(
             "CORRECTION_LABEL", 
@@ -316,20 +301,20 @@ class Bot:
 
         user.add_request()
         text = update.message.text
-        user.add_user_message(text)  # 👈 SAVE user message first
+        user.add_user_message(text)
 
         try:
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
             corrected_text = await self.call_deepseek_api(user)
 
-            # Check if the corrected text is the same as the original message
-            if corrected_text.startswith(f"[Correction: {text}]"):
-                # If no correction is needed, simply say the message is correct
-                await update.message.reply_text("Your message is already correct! ✅")
+            # Extract just the response part if the message is already correct
+            if corrected_text.startswith(f"[{CORRECTION_LABELS[user.language]} {text}]"):
+                response = corrected_text.split("]")[1].strip()
+                await update.message.reply_text(response)
             else:
                 await update.message.reply_text(corrected_text)
 
-            user.add_assistant_message(corrected_text)  # 👈 SAVE bot reply
+            user.add_assistant_message(corrected_text)
 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
