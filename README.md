@@ -1,13 +1,13 @@
 # Ipril - Grammar Assistant Bot
 
-<div align="center">
-  <img src="https://raw.githubusercontent.com/imansprn/ipril/main/assets/logo.png" alt="Ipril Logo" width="200"/>
-</div>
+<p align="center"><img src="https://raw.githubusercontent.com/imansprn/ipril/main/assets/logo.png" width="360"></p>
 
-[![Tests](https://github.com/imansprn/ipril/actions/workflows/bot.yml/badge.svg)](https://github.com/imansprn/ipril/actions/workflows/bot.yml)
-[![Coverage](https://codecov.io/gh/imansprn/ipril/branch/main/graph/badge.svg)](https://codecov.io/gh/imansprn/ipril)
-[![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://github.com/imansprn/ipril/actions/workflows/bot.yml"><img src="https://github.com/imansprn/ipril/actions/workflows/bot.yml/badge.svg" alt="Tests"></img></a>
+  <a href="https://codecov.io/gh/imansprn/ipril"><img src="https://codecov.io/gh/imansprn/ipril/branch/main/graph/badge.svg" alt="Coverage"></img></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10-blue.svg" alt="Python Version"></img></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License"></img></a>
+</p>
 
 You can try this bot on Telegram by searching for [@IprilBot](https://t.me/IprilBot) or clicking the link to start a conversation.
 
@@ -32,37 +32,37 @@ A Telegram bot that helps users improve their writing in multiple languages usin
 
 Here are some examples of how the bot corrects grammar and engages in conversation:
 
-### English
+### 🇺🇸 English (en)
 ```
 User: "I goes to the store yesterday"
 Bot: "[Correction: I went to the store yesterday] What did you buy at the store?"
 ```
 
-### Spanish
+### 🇪🇸 Spanish (es)
 ```
 User: "Yo ir al parque mañana"
 Bot: "[Correction: Yo iré al parque mañana] ¿Qué te gusta hacer en el parque?"
 ```
 
-### French
+### 🇫🇷 French (fr)
 ```
 User: "Je mange un pomme"
 Bot: "[Correction: Je mange une pomme] Aimes-tu les fruits en général?"
 ```
 
-### German
+### 🇩🇪 German (de)
 ```
 User: "Ich gehe in der Park"
 Bot: "[Correction: Ich gehe in den Park] Was machst du gerne im Park?"
 ```
 
-### Italian
+### 🇮🇹 Italian (it)
 ```
 User: "Io mangiare la pizza"
 Bot: "[Correction: Io mangio la pizza] Qual è la tua pizza preferita?"
 ```
 
-### Russian
+### 🇷🇺 Russian (ru)
 ```
 User: "Я ходить в магазин"
 Bot: "[Correction: Я хожу в магазин] Что ты обычно покупаешь в магазине?"
