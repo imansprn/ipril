@@ -1,5 +1,9 @@
 # Ipril - Grammar Assistant Bot
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/imansprn/ipril/main/assets/logo.png" alt="Ipril Logo" width="200"/>
+</div>
+
 [![Tests](https://github.com/imansprn/ipril/actions/workflows/bot.yml/badge.svg)](https://github.com/imansprn/ipril/actions/workflows/bot.yml)
 [![Coverage](https://codecov.io/gh/imansprn/ipril/branch/main/graph/badge.svg)](https://codecov.io/gh/imansprn/ipril)
 [![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
