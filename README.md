@@ -5,6 +5,8 @@
 [![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+You can try this bot on Telegram by searching for [@IprilBot](https://t.me/IprilBot) or clicking the link to start a conversation.
+
 A Telegram bot that helps users improve their writing in multiple languages using AI-powered grammar correction.
 
 ## Features
@@ -21,6 +23,53 @@ A Telegram bot that helps users improve their writing in multiple languages usin
 - `/start` - Welcome message with instructions
 - `/setlang [code]` - Change language preference
 - `/currentlang` - Show current language
+
+## Example Results
+
+Here are some examples of how the bot corrects grammar and engages in conversation:
+
+### English
+```
+User: "I goes to the store yesterday"
+Bot: "[Correction: I went to the store yesterday] What did you buy at the store?"
+```
+
+### Spanish
+```
+User: "Yo ir al parque mañana"
+Bot: "[Correction: Yo iré al parque mañana] ¿Qué te gusta hacer en el parque?"
+```
+
+### French
+```
+User: "Je mange un pomme"
+Bot: "[Correction: Je mange une pomme] Aimes-tu les fruits en général?"
+```
+
+### German
+```
+User: "Ich gehe in der Park"
+Bot: "[Correction: Ich gehe in den Park] Was machst du gerne im Park?"
+```
+
+### Italian
+```
+User: "Io mangiare la pizza"
+Bot: "[Correction: Io mangio la pizza] Qual è la tua pizza preferita?"
+```
+
+### Russian
+```
+User: "Я ходить в магазин"
+Bot: "[Correction: Я хожу в магазин] Что ты обычно покупаешь в магазине?"
+```
+
+The bot not only corrects grammar but also:
+- Maintains conversation context
+- Asks relevant follow-up questions
+- Supports 6 languages
+- Remembers user preferences
+- Has a rate limit of 15 requests per minute
 
 ## Setup
 
@@ -54,20 +103,6 @@ A Telegram bot that helps users improve their writing in multiple languages usin
    ```bash
    pytest tests/ -v
    ```
-
-## Deployment with GitHub Actions
-
-The bot can be deployed for free using GitHub Actions (for public repositories):
-
-1. Go to your repository's Settings > Secrets and variables > Actions
-2. Add the following secrets:
-   - `BOT_TOKEN`: Your Telegram bot token
-   - `DEEPSEEK_API_KEY`: Your DeepSeek API key
-3. The workflow will automatically run on:
-   - Push to main branch
-   - Manual trigger (workflow_dispatch)
-
-The bot will run continuously on GitHub's servers. You can monitor its status in the Actions tab.
 
 ## Testing
 
