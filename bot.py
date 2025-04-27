@@ -19,7 +19,9 @@ from telegram.ext import (
     filters,
     ConversationHandler,
 )
-from langdetect import detect, LangDetectException
+from langdetect import detect, LangDetectException, DetectorFactory
+from langdetect.detector_factory import PROFILES_DIRECTORY
+from langdetect.lang_detect_exception import ErrorCode
 
 # Load environment variables
 load_dotenv()
@@ -44,6 +46,10 @@ SUPPORTED_LANGUAGES = {
     "it": "Italian",
     "ru": "Russian",
 }
+
+# Configure language detection
+DetectorFactory.seed = 0  # For consistent results
+DetectorFactory.lang_list = list(SUPPORTED_LANGUAGES.keys())  # Only detect supported languages
 
 CORRECTION_LABELS = {
     "en": "Correction:",
@@ -280,6 +286,7 @@ class Bot:
         """Handle the user's response to the language switch prompt."""
         user = context.user_data.get("user")
         detected_lang = context.user_data.get("detected_lang")  # Use the stored detected language
+        original_text = context.user_data.get("original_text")  # Get the original message
         response = update.message.text.strip().lower()
 
         if response == "yes":
@@ -290,17 +297,34 @@ class Bot:
                 f"Language switched from {old_lang.upper()} to {detected_lang.upper()}. "
                 f"You can now continue chatting in {SUPPORTED_LANGUAGES.get(detected_lang, detected_lang.upper())}"
             )
+
+            # Process the original message with the new language setting if it exists
+            if original_text:
+                user.add_user_message(original_text)  # Add to history
+                # Process the original message with the new language setting
+                response = await self.call_deepseek_api(original_text, user.language)
+                await update.message.reply_text(response)
+
         elif response == "no":
             await update.message.reply_text(
                 f"Keeping the current language ({user.language.upper()}). "
                 f"You can continue chatting in {SUPPORTED_LANGUAGES.get(user.language, user.language.upper())}"
             )
+
+            # Process the original message with the current language setting if it exists
+            if original_text:
+                user.add_user_message(original_text)  # Add to history
+                # Process the original message with the current language setting
+                response = await self.call_deepseek_api(original_text, user.language)
+                await update.message.reply_text(response)
+
         else:
             await update.message.reply_text("Please respond with 'yes' or 'no'.")
             return CONFIRM_LANGUAGE  # Stay in the same state
 
         # Clear the stored language detection data
         context.user_data.pop("detected_lang", None)
+        context.user_data.pop("original_text", None)  # Clean up original message
         return ConversationHandler.END
 
     async def correct_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -320,15 +344,25 @@ class Bot:
         text = update.message.text
         user.add_user_message(text)
 
-        # Detect the language of the incoming message
-        try:
-            detected_lang = detect(text)
-        except LangDetectException:
-            detected_lang = 'en'  # Fallback to English if detection fails
+        # Skip language detection for yes/no responses and short messages
+        text_lower = text.strip().lower()
+        if text_lower in ["yes", "no"] or len(text_lower) < 3:
+            detected_lang = user.language
+        else:
+            # Detect the language of the incoming message
+            try:
+                detected_lang = detect(text)
+                # Only consider supported languages
+                if detected_lang not in SUPPORTED_LANGUAGES:
+                    detected_lang = user.language
+            except LangDetectException as e:
+                logger.debug(f"Language detection failed: {e}")
+                detected_lang = user.language  # Keep current language on detection failure
 
-        if detected_lang != user.language:
+        if detected_lang != user.language and detected_lang in SUPPORTED_LANGUAGES:
             context.user_data["user"] = user
             context.user_data["detected_lang"] = detected_lang
+            context.user_data["original_text"] = text  # Store the original message
             await self.confirm_language(update, context)
             return
 
