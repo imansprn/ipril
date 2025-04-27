@@ -19,6 +19,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.error import Conflict
+from langdetect import detect, LangDetectException
 
 # Load environment variables
 load_dotenv()
@@ -86,7 +87,6 @@ Example for Russian input:
 Input: "Я ходить в магазин"
 Output: "[Исправление: Я хожу в магазин] Что ты обычно покупаешь в магазине?"
 """
-
 
 class UserData:
     def __init__(self, user_id: int):
@@ -258,7 +258,7 @@ class Bot:
         input_lang = user.language
 
         system_prompt = SYSTEM_PROMPT.replace(
-            "CORRECTION_LABEL", 
+            "CORRECTION_LABEL",
             CORRECTION_LABELS.get(input_lang, "Correction:")
         )
         history_messages = user.message_history.copy()
@@ -302,6 +302,19 @@ class Bot:
         user.add_request()
         text = update.message.text
         user.add_user_message(text)
+
+        # Detect the language of the incoming message
+        try:
+            detected_lang = detect(text)
+        except LangDetectException:
+            detected_lang = 'en'  # Fallback to English if detection fails
+
+        if detected_lang != user.language:
+            await update.message.reply_text(
+                f"Your message is in {detected_lang.upper()}, but your selected language is {user.language.upper()}. "
+                "Would you like to switch the language? (yes/no)"
+            )
+            return
 
         try:
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
