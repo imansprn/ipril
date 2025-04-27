@@ -274,22 +274,34 @@ class Bot:
                 "Would you like to switch the language? (yes/no)"
             )
             return CONFIRM_LANGUAGE
+        return None
 
-    async def handle_language_response(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = context.user_data.get("user")
-        detected_lang = context.user_data.get("detected_lang")
-        response = update.message.text.strip().lower()
+    async def handle_language_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the user's response to the language switch prompt."""
+    user = context.user_data.get("user")
+    detected_lang = context.user_data.get("detected_lang")  # Use the stored detected language
+    response = update.message.text.strip().lower()
 
-        if response == "yes":
-            user.language = detected_lang
-            await update.message.reply_text(f"Language switched to {detected_lang.upper()}.")
-        elif response == "no":
-            await update.message.reply_text("Okay, keeping the current language.")
-        else:
-            await update.message.reply_text("Please respond with 'yes' or 'no'.")
-            return CONFIRM_LANGUAGE
+    if response == "yes":
+        old_lang = user.language
+        user.language = detected_lang  # Switch to the detected language
+        await self.save_user_data()  # Save the language change
+        await update.message.reply_text(
+            f"Language switched from {old_lang.upper()} to {detected_lang.upper()}. "
+            f"You can now continue chatting in {SUPPORTED_LANGUAGES.get(detected_lang, detected_lang.upper())}"
+        )
+    elif response == "no":
+        await update.message.reply_text(
+            f"Keeping the current language ({user.language.upper()}). "
+            f"You can continue chatting in {SUPPORTED_LANGUAGES.get(user.language, user.language.upper())}"
+        )
+    else:
+        await update.message.reply_text("Please respond with 'yes' or 'no'.")
+        return CONFIRM_LANGUAGE  # Stay in the same state
 
-        return ConversationHandler.END
+    # Clear the stored language detection data
+    context.user_data.pop("detected_lang", None)
+    return ConversationHandler.END
 
     async def correct_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
