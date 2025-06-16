@@ -77,7 +77,7 @@ class UserData:
         self.user_id = user_id
         self.language = "en"  # Default language
         self.last_requests = []
-        self.message_history = []  # 👈 Each item: {"role": "user"/"assistant", "content": "..."}
+        self.message_history = []  # Each item: {"role": "user"/"assistant", "content": "...", "timestamp": datetime}
 
     def can_make_request(self) -> bool:
         now = datetime.now()
@@ -95,12 +95,20 @@ class UserData:
 
     def add_user_message(self, text: str):
         """Add a user message to history (keep max 5 pairs)"""
-        self.message_history.append({"role": "user", "content": text})
+        self.message_history.append({
+            "role": "user", 
+            "content": text,
+            "timestamp": datetime.now()  # Add timestamp to new messages
+        })
         self._trim_history()
 
     def add_assistant_message(self, text: str):
         """Add a bot/assistant message to history"""
-        self.message_history.append({"role": "assistant", "content": text})
+        self.message_history.append({
+            "role": "assistant", 
+            "content": text,
+            "timestamp": datetime.now()  # Add timestamp to new messages
+        })
         self._trim_history()
 
     def _trim_history(self):
@@ -233,6 +241,24 @@ class Bot:
 
     async def call_deepseek_api(self, user: UserData) -> str:
         """Call DeepSeek API with full chat history"""
+        # Check if there are any messages in history
+        if not user.message_history:
+            return "Please send me a message to correct."
+
+        # For now, we'll only check timestamps on new messages
+        # Existing messages without timestamps will be treated as valid
+        last_message = user.message_history[-1]
+        
+        # Only check timestamp if it exists (for new messages)
+        if "timestamp" in last_message:
+            last_message_time = last_message["timestamp"]
+            time_diff = datetime.now() - last_message_time
+            
+            if time_diff.total_seconds() > 24 * 3600:  # 24 hours in seconds
+                # Clear the message history if it's too old
+                user.message_history = []
+                return "Your previous conversation has expired. Please start a new conversation."
+
         url = "https://api.deepseek.com/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -246,7 +272,25 @@ class Bot:
             "CORRECTION_LABEL",
             CORRECTION_LABELS.get(input_lang, "Correction:")
         )
-        history_messages = user.message_history.copy()
+        
+        # Create a copy of messages without timestamps for the API
+        # Only include messages that are either:
+        # 1. Less than 24 hours old (if they have timestamps)
+        # 2. Don't have timestamps (old messages)
+        history_messages = []
+        now = datetime.now()
+        for msg in user.message_history:
+            # Skip messages with timestamps that are more than 24 hours old
+            if "timestamp" in msg:
+                time_diff = now - msg["timestamp"]
+                if time_diff.total_seconds() > 24 * 3600:
+                    continue
+            
+            message = {
+                "role": msg["role"],
+                "content": msg["content"]
+            }
+            history_messages.append(message)
 
         data = {
             "model": "deepseek-chat",
@@ -302,7 +346,7 @@ class Bot:
             if original_text:
                 user.add_user_message(original_text)  # Add to history
                 # Process the original message with the new language setting
-                response = await self.call_deepseek_api(original_text, user.language)
+                response = await self.call_deepseek_api(user)
                 await update.message.reply_text(response)
 
         elif response == "no":
@@ -315,7 +359,7 @@ class Bot:
             if original_text:
                 user.add_user_message(original_text)  # Add to history
                 # Process the original message with the current language setting
-                response = await self.call_deepseek_api(original_text, user.language)
+                response = await self.call_deepseek_api(user)
                 await update.message.reply_text(response)
 
         else:
