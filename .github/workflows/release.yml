@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag (e.g. v1.2.3)"
+        required: true
+        type: string
+      target_branch:
+        description: "Branch to tag (default: main)"
+        required: false
+        default: "main"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version input
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([\-+].*)?$ ]]; then
+            echo "Invalid version '$VERSION'. Expected like v1.2.3"
+            exit 1
+          fi
+
+      - name: Create or update tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags
+          TAG="${{ inputs.version }}"
+          TARGET="origin/${{ inputs.target_branch }}"
+
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            echo "Tag $TAG already exists. Refusing to move an existing tag."
+            exit 1
+          fi
+
+          git tag "$TAG" "$TARGET"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "${{ inputs.version }}"
+          generate_release_notes: true

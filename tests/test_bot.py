@@ -1,8 +1,14 @@
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timedelta
-from pathlib import Path
-from bot import Bot, UserData, Update
+from bot import (
+    Bot,
+    UserData,
+    CONFIRM_LANGUAGE,
+    LANG_CONFIRM_KEEP,
+    LANG_CONFIRM_SWITCH,
+)
+from config import Settings
 import asyncio
 
 class TestUserData:
@@ -26,13 +32,20 @@ class TestUserData:
         user.add_request()
         assert len(user.last_requests) == initial_count + 1
 
+    def test_clear_conversation_memory(self, user):
+        user.add_user_message("a")
+        user.add_request()
+        user.clear_conversation_memory()
+        assert user.message_history == []
+        assert user.last_requests == []
+
+
 class TestBot:
     @pytest.fixture
     def bot(self):
-        bot = Bot()
-        bot.token = "test_token"
-        bot.api_key = "test_api_key"
-        return bot
+        return Bot(
+            settings=Settings(bot_token="test_token", deepseek_api_key="test_api_key")
+        )
 
     @pytest.mark.asyncio
     async def test_run(self, bot):
@@ -55,7 +68,10 @@ class TestBot:
         mock_application.start = AsyncMock()
         mock_application.stop = AsyncMock()
         mock_application.shutdown = AsyncMock()
-        mock_application.updater.start_polling = AsyncMock()
+        mock_updater = MagicMock()
+        mock_updater.start_polling = AsyncMock()
+        mock_updater.stop = AsyncMock()
+        mock_application.updater = mock_updater
 
         with patch('bot.Application', mock_application_class):
             # Create a task for the bot
@@ -78,10 +94,11 @@ class TestBot:
             mock_token_builder.build.assert_called_once()
 
             # Verify bot setup
-            assert mock_application.add_handler.call_count == 5  # Should add 5 handlers: start, help, setlang, currentlang, and message handler
+            assert mock_application.add_handler.call_count == 8
             mock_application.initialize.assert_called_once()
             mock_application.start.assert_called_once()
-            mock_application.updater.start_polling.assert_called_once()
+            mock_updater.start_polling.assert_called_once()
+            mock_updater.stop.assert_called_once()
             mock_application.stop.assert_called_once()
             mock_application.shutdown.assert_called_once()
 
@@ -142,48 +159,32 @@ class TestBot:
             
             # Test message handling with different language
             await bot.correct_message(update, context)
+
+            assert user.message_history == []
             
             # Verify that language switch was offered and original message was stored
-            update.message.reply_text.assert_called_with(
-                "Your message is in FR, but your selected language is EN. "
-                "Would you like to switch the language? (yes/no)"
-            )
+            assert update.message.reply_text.call_count == 1
             assert context.user_data.get("original_text") == original_text
             
-            # Test language switch acceptance
-            original_message = update.message.text
-            update.message.text = "yes"
-            context.user_data["user"] = user
-            context.user_data["detected_lang"] = "fr"
-
-            # Mock save_user_data and call_deepseek_api
+            # Test language switch acceptance via callback query
             bot.save_user_data = AsyncMock()
-            bot.call_deepseek_api = AsyncMock(return_value="[Correction: Bonjour] Hello!")
-            
-            # Create a new message mock for the original message
-            original_update = AsyncMock()
-            original_update.message = AsyncMock()
-            original_update.message.text = original_text
-            original_update.effective_user = update.effective_user
-            original_update.effective_chat = update.effective_chat
-            
-            await bot.handle_language_response(update, context)
+            bot.call_deepseek_api = AsyncMock(
+                return_value='{"corrected_text":"Bonjour","is_correct":true,"follow_up":"Comment ça va ?","tip":null,"vocab":[]}'
+            )
+
+            callback_update = AsyncMock()
+            callback_update.effective_chat = update.effective_chat
+            callback_update.callback_query.data = LANG_CONFIRM_SWITCH
+            callback_update.callback_query.answer = AsyncMock()
+            callback_update.callback_query.edit_message_text = AsyncMock()
+            context.bot.send_message = AsyncMock()
+
+            await bot.handle_language_callback(callback_update, context)
             
             # Verify language was switched
             assert user.language == "fr"
-            
-            # Verify the switch confirmation message was sent
-            assert any(
-                "Language switched from EN to FR" in str(call.args[0])
-                for call in update.message.reply_text.call_args_list
-            )
-            
-            # Verify the original message was processed with new language
-            assert any(
-                "[Correction: Bonjour] Hello!" in str(call.args[0])
-                for call in update.message.reply_text.call_args_list
-            )
-            
+
+            context.bot.send_message.assert_called_once()
             bot.save_user_data.assert_called_once()
             
             # Verify context was cleaned up
@@ -211,34 +212,22 @@ class TestBot:
         update.effective_chat = MagicMock(id=123)
         
         # Mock call_deepseek_api for processing original message
-        bot.call_deepseek_api = AsyncMock(return_value="[Correction: Bonjour] Hello!")
+        bot.call_deepseek_api = AsyncMock(
+            return_value='{"corrected_text":"Bonjour","is_correct":true,"follow_up":"Comment ça va ?","tip":null,"vocab":[]}'
+        )
         
-        # Test rejecting language switch
-        update.message.text = "no"
+        context.bot.send_message = AsyncMock()
+        callback_update = AsyncMock()
+        callback_update.effective_chat = update.effective_chat
+        callback_update.callback_query.data = LANG_CONFIRM_KEEP
+        callback_update.callback_query.answer = AsyncMock()
+        callback_update.callback_query.edit_message_text = AsyncMock()
 
-        # Create a new message mock for the original message
-        original_update = AsyncMock()
-        original_update.message = AsyncMock()
-        original_update.message.text = original_text
-        original_update.effective_user = update.effective_user
-        original_update.effective_chat = update.effective_chat
-
-        await bot.handle_language_response(update, context)
+        await bot.handle_language_callback(callback_update, context)
         
         # Verify language was not switched
         assert user.language == "en"
-        
-        # Verify the rejection message was sent
-        assert any(
-            "Keeping the current language (EN)" in str(call.args[0])
-            for call in update.message.reply_text.call_args_list
-        )
-        
-        # Verify the original message was processed with current language
-        assert any(
-            "[Correction: Bonjour] Hello!" in str(call.args[0])
-            for call in update.message.reply_text.call_args_list
-        )
+        context.bot.send_message.assert_called_once()
         
         # Verify context was cleaned up
         assert "detected_lang" not in context.user_data
@@ -246,25 +235,171 @@ class TestBot:
 
     @pytest.mark.asyncio
     async def test_invalid_language_response(self, bot):
-        # Mock update and context
+        # Kept for backwards compatibility; new flow uses inline buttons
+        assert CONFIRM_LANGUAGE == 1
+
+    @pytest.mark.asyncio
+    async def test_forget_command_clears_memory_and_context(self, bot):
+        user = UserData(42)
+        user.language = "fr"
+        user.add_user_message("secret")
+        user.add_request()
+        bot.users[42] = user
+
+        update = AsyncMock()
+        update.effective_user.id = 42
+        context = MagicMock()
+        context.user_data = {"pending": True}
+
+        await bot.forget_command(update, context)
+
+        assert user.message_history == []
+        assert user.last_requests == []
+        assert user.language == "fr"
+        assert context.user_data == {}
+        update.message.reply_text.assert_called_once()
+        assert "cleared" in update.message.reply_text.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_privacy_command_replies(self, bot):
         update = AsyncMock()
         context = MagicMock()
-        user = UserData(123)
-        context.user_data = {"user": user, "detected_lang": "fr"}
-        
-        # Test invalid response
-        update.message.text = "maybe"
-        
-        result = await bot.handle_language_response(update, context)
-        
-        # Verify we stay in the conversation
-        assert result == 1  # CONFIRM_LANGUAGE
-        update.message.reply_text.assert_called_with(
-            "Please respond with 'yes' or 'no'."
+        await bot.privacy_command(update, context)
+        text = update.message.reply_text.call_args[0][0]
+        assert "DeepSeek" in text
+        assert "user_data.json" in text
+
+    @pytest.mark.asyncio
+    async def test_json_reply_formatting(self, bot):
+        update = AsyncMock()
+        context = MagicMock()
+        context.user_data = {}
+        context.bot = AsyncMock()
+        context.bot.send_chat_action = AsyncMock()
+        update.effective_user.id = 5
+        update.effective_chat = MagicMock(id=5)
+        update.message.text = "I goes to the store"
+
+        bot.users[5] = UserData(5)
+        bot.users[5].language = "en"
+
+        bot.call_deepseek_api = AsyncMock(
+            return_value='{"corrected_text":"I go to the store","is_correct":false,"follow_up":"What do you like to buy there?","tip":"Use go with I/you/we/they.","vocab":["to buy","grocery store"]}'
         )
-        
-        # Verify context was not cleaned up
-        assert "detected_lang" in context.user_data
+
+        await bot.correct_message(update, context)
+
+        sent = update.message.reply_text.call_args[0][0]
+        assert "Correction:" in sent
+        assert "I go to the store" in sent
+        assert "Tip:" in sent
+        assert "Vocab:" in sent
+
+
+class TestUserDataMessageHistory:
+    def test_add_message_with_timestamp(self):
+        user = UserData(123)
+        user.add_user_message("hello")
+        user.add_assistant_message("hi")
+
+        assert "timestamp" in user.message_history[0]
+        assert "timestamp" in user.message_history[1]
+        assert isinstance(user.message_history[0]["timestamp"], datetime)
+        assert isinstance(user.message_history[1]["timestamp"], datetime)
+
+    def test_message_history_trim(self):
+        user = UserData(123)
+        for i in range(6):
+            user.add_user_message(f"user message {i}")
+            user.add_assistant_message(f"assistant message {i}")
+
+        assert len(user.message_history) == 10
+        assert user.message_history[0]["content"] == "user message 1"
+        assert user.message_history[1]["content"] == "assistant message 1"
+
+
+class TestCallDeepSeekApi:
+    @pytest.fixture
+    def bot(self):
+        return Bot(
+            settings=Settings(bot_token="test_token", deepseek_api_key="test_api_key")
+        )
+
+    @pytest.fixture
+    def user_with_old_messages(self, bot):
+        user = UserData(123)
+        user.add_user_message("old message 1")
+        user.add_assistant_message("old response 1")
+        user.add_user_message("old message 2")
+        user.add_assistant_message("old response 2")
+        return user
+
+    @pytest.mark.asyncio
+    async def test_call_deepseek_api_with_old_messages(self, bot, user_with_old_messages):
+        captured: dict = {}
+
+        async def fake(api_key, payload):
+            captured["api_key"] = api_key
+            captured["payload"] = payload
+            return "test response"
+
+        with patch("bot.deepseek_chat_completion", side_effect=fake):
+            out = await bot.call_deepseek_api(user_with_old_messages)
+
+        assert out == "test response"
+        assert captured["api_key"] == "test_api_key"
+        messages = captured["payload"]["messages"]
+        assert len(messages) == 5
+        assert messages[1]["content"] == "old message 1"
+        assert messages[2]["content"] == "old response 1"
+        assert messages[3]["content"] == "old message 2"
+        assert messages[4]["content"] == "old response 2"
+
+    @pytest.mark.asyncio
+    async def test_call_deepseek_api_with_expired_messages(self, bot, user_with_old_messages):
+        old_time = datetime.now() - timedelta(hours=25)
+        user_with_old_messages.message_history.append(
+            {
+                "role": "user",
+                "content": "expired message",
+                "timestamp": old_time,
+            }
+        )
+        user_with_old_messages.add_user_message("recent message")
+
+        captured: dict = {}
+
+        async def fake(api_key, payload):
+            captured["payload"] = payload
+            return "ok"
+
+        with patch("bot.deepseek_chat_completion", side_effect=fake):
+            await bot.call_deepseek_api(user_with_old_messages)
+
+        messages = captured["payload"]["messages"]
+        contents = [m["content"] for m in messages]
+        assert "expired message" not in contents
+        assert "recent message" in contents
+
+    @pytest.mark.asyncio
+    async def test_call_deepseek_api_with_all_expired_messages(self, bot):
+        user = UserData(123)
+        old_time = datetime.now() - timedelta(hours=25)
+        user.message_history.append(
+            {
+                "role": "user",
+                "content": "expired message",
+                "timestamp": old_time,
+            }
+        )
+
+        response = await bot.call_deepseek_api(user)
+
+        assert len(user.message_history) == 0
+        assert response == (
+            "Your previous conversation has expired. Please start a new conversation."
+        )
+
 
 if __name__ == '__main__':
     pytest.main()

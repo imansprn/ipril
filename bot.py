@@ -2,17 +2,22 @@
 import asyncio
 import json
 import logging
-import os
+import sys
+from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import aiofiles
-import aiohttp
 from dotenv import load_dotenv
+
+from config import Settings
+from deepseek_client import deepseek_chat_completion
 from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -20,8 +25,6 @@ from telegram.ext import (
     ConversationHandler,
 )
 from langdetect import detect, LangDetectException, DetectorFactory
-from langdetect.detector_factory import PROFILES_DIRECTORY
-from langdetect.lang_detect_exception import ErrorCode
 
 # Load environment variables
 load_dotenv()
@@ -63,13 +66,29 @@ CORRECTION_LABELS = {
 RATE_LIMIT = 15  # requests per minute
 RATE_LIMIT_WINDOW = 60  # seconds
 
-SYSTEM_PROMPT = """You are a grammar correction assistant. Your task is to:
-1. Correct grammar mistakes in the given text while keeping it in the same language
-2. Provide a friendly follow-up question in the user's chosen language
-3. Format your response as: "[CORRECTION_LABEL CORRECTED_TEXT] FOLLOW_UP_QUESTION"
+SYSTEM_PROMPT = """You are a language-learning conversation tutor.
+
+Given the user's message, produce a JSON object ONLY (no markdown, no code fences, no extra text).
+
+Rules:
+- Keep everything (corrected text, follow-up, tip, vocab) in the SAME language as the user's chosen language.
+- If the user's message is already correct, keep corrected_text identical and set is_correct=true.
+- corrected_text should preserve the user's meaning and tone.
+- follow_up must be a single question that continues the conversation.
+
+Return exactly these fields:
+{
+  "corrected_text": string,
+  "is_correct": boolean,
+  "follow_up": string,
+  "tip": string | null,
+  "vocab": [string, string] | []
+}
 """
 
 CONFIRM_LANGUAGE = 1
+LANG_CONFIRM_SWITCH = "lang_confirm:switch"
+LANG_CONFIRM_KEEP = "lang_confirm:keep"
 
 
 class UserData:
@@ -78,6 +97,7 @@ class UserData:
         self.language = "en"  # Default language
         self.last_requests = []
         self.message_history = []  # Each item: {"role": "user"/"assistant", "content": "...", "timestamp": datetime}
+        self._recent_correct_flags = deque(maxlen=20)
 
     def can_make_request(self) -> bool:
         now = datetime.now()
@@ -92,6 +112,21 @@ class UserData:
 
     def add_request(self):
         self.last_requests.append(datetime.now())
+
+    def record_message_quality(self, was_already_correct: bool) -> None:
+        self._recent_correct_flags.append(bool(was_already_correct))
+
+    @property
+    def proficiency(self) -> str:
+        """
+        Heuristic, adaptive proficiency level.
+        - "beginner" when we see frequent corrections
+        - "intermediate" when messages are often already correct
+        """
+        if len(self._recent_correct_flags) < 6:
+            return "beginner"
+        correct_rate = sum(self._recent_correct_flags) / len(self._recent_correct_flags)
+        return "intermediate" if correct_rate >= 0.7 else "beginner"
 
     def add_user_message(self, text: str):
         """Add a user message to history (keep max 5 pairs)"""
@@ -116,11 +151,77 @@ class UserData:
         if len(self.message_history) > 10:
             self.message_history = self.message_history[-10:]
 
+    def clear_conversation_memory(self) -> None:
+        """Drop in-memory chat history and per-minute request timestamps (privacy / reset)."""
+        self.message_history = []
+        self.last_requests = []
+
+
+def _strip_code_fences(text: str) -> str:
+    s = (text or "").strip()
+    if s.startswith("```"):
+        lines = s.splitlines()
+        # drop first and last fence lines if present
+        if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].startswith("```"):
+            return "\n".join(lines[1:-1]).strip()
+    return s
+
+
+def parse_model_json_response(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse the model response JSON.
+    Returns None if parsing fails.
+    """
+    s = _strip_code_fences(text)
+    # Try to extract first JSON object if the model included extra text
+    if "{" in s and "}" in s:
+        start = s.find("{")
+        end = s.rfind("}")
+        candidate = s[start : end + 1]
+    else:
+        candidate = s
+    try:
+        data = json.loads(candidate)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def format_tutor_reply(lang_code: str, original_text: str, payload: Dict[str, Any]) -> str:
+    """
+    Render a user-facing message from the model JSON payload.
+    """
+    label = CORRECTION_LABELS.get(lang_code, "Correction:")
+    corrected_text = str(payload.get("corrected_text") or "").strip()
+    follow_up = str(payload.get("follow_up") or "").strip()
+    tip = payload.get("tip")
+    vocab = payload.get("vocab") or []
+
+    if not corrected_text:
+        corrected_text = original_text
+    if not follow_up:
+        follow_up = ""
+
+    parts = [f"[{label} {corrected_text}]"]
+    if tip:
+        parts.append(f"Tip: {str(tip).strip()}")
+    if vocab and isinstance(vocab, list):
+        vocab_items = [str(v).strip() for v in vocab if str(v).strip()]
+        if vocab_items:
+            parts.append("Vocab: " + ", ".join(vocab_items[:2]))
+    if follow_up:
+        parts.append(follow_up)
+    return "\n".join(parts).strip()
+
 
 class Bot:
-    def __init__(self):
-        self.token = os.getenv("BOT_TOKEN")
-        self.api_key = os.getenv("DEEPSEEK_API_KEY")
+    def __init__(self, settings: Optional[Settings] = None):
+        if settings is None:
+            settings = Settings.from_env()
+        self.token = settings.bot_token
+        self.api_key = settings.deepseek_api_key
         self.users: Dict[int, UserData] = {}
         self.data_file = Path("user_data.json")
         self.load_user_data()
@@ -134,6 +235,11 @@ class Bot:
                     for user_id, user_data in data.items():
                         self.users[int(user_id)] = UserData(int(user_id))
                         self.users[int(user_id)].language = user_data["language"]
+                        # Backwards-compatible: older files only have "language"
+                        if "recent_correct_flags" in user_data:
+                            self.users[int(user_id)]._recent_correct_flags.extend(
+                                [bool(x) for x in user_data["recent_correct_flags"]][-20:]
+                            )
         except Exception as e:
             logger.error(f"Error loading user data: {e}")
 
@@ -141,7 +247,10 @@ class Bot:
         """Save user data to JSON file"""
         try:
             data = {
-                str(user_id): {"language": user.language}
+                str(user_id): {
+                    "language": user.language,
+                    "recent_correct_flags": list(user._recent_correct_flags),
+                }
                 for user_id, user in self.users.items()
             }
             async with aiofiles.open(self.data_file, "w") as f:
@@ -180,6 +289,8 @@ class Bot:
             "Commands:\n"
             "/setlang [code] - Change language\n"
             "/currentlang - Show current language\n"
+            "/privacy - How your data is used\n"
+            "/forget - Clear this chat's conversation memory\n"
             "/help - Show help message\n\n"
             "Just send me a message and I'll help correct it!"
         )
@@ -197,10 +308,40 @@ class Bot:
             "/start - Welcome message\n"
             "/setlang [code] - Change language (e.g., /setlang es)\n"
             "/currentlang - Show your current language\n"
+            "/privacy - Data use and third parties\n"
+            "/forget - Clear conversation memory (keeps language preference)\n"
             "/help - This help message\n\n"
             "Supported languages: en, es, fr, de, it, ru"
         )
         await update.message.reply_text(help_message)
+
+    async def privacy_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Explain what leaves the device and what is stored locally."""
+        text = (
+            "Privacy (short version)\n\n"
+            "• Messages you send for correction are forwarded to DeepSeek "
+            "(api.deepseek.com) as chat completion requests. Do not send secrets.\n"
+            "• On this server we keep your chosen language in user_data.json "
+            "and short in-memory conversation context to power replies.\n"
+            "• /forget clears that in-memory conversation and rate-limit timestamps "
+            "for your account. Your saved language preference stays unless you change it with /setlang.\n"
+            "• Logs may contain errors (snippets only); avoid sending highly sensitive text."
+        )
+        await update.message.reply_text(text)
+
+    async def forget_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Clear conversation memory for this user."""
+        user_id = update.effective_user.id
+        if user_id not in self.users:
+            self.users[user_id] = UserData(user_id)
+            await self.save_user_data()
+
+        self.users[user_id].clear_conversation_memory()
+        context.user_data.clear()
+        await update.message.reply_text(
+            "Conversation memory cleared for your account. "
+            "Your language preference is unchanged. Send a new message anytime."
+        )
 
     async def set_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle the /setlang command"""
@@ -234,9 +375,10 @@ class Bot:
             self.users[user_id] = UserData(user_id)
             await self.save_user_data()
 
-        lang_code = self.users[user_id].language
+        user = self.users[user_id]
+        lang_code = user.language
         await update.message.reply_text(
-            f"Your current language is {SUPPORTED_LANGUAGES[lang_code]}"
+            f"Your current language is {SUPPORTED_LANGUAGES[lang_code]} (mode: {user.proficiency})"
         )
 
     async def call_deepseek_api(self, user: UserData) -> str:
@@ -259,19 +401,24 @@ class Bot:
                 user.message_history = []
                 return "Your previous conversation has expired. Please start a new conversation."
 
-        url = "https://api.deepseek.com/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-
         # Use the user's set language instead of trying to detect it
         input_lang = user.language
 
-        system_prompt = SYSTEM_PROMPT.replace(
-            "CORRECTION_LABEL",
-            CORRECTION_LABELS.get(input_lang, "Correction:")
-        )
+        system_prompt = SYSTEM_PROMPT
+        if user.proficiency == "beginner":
+            system_prompt += (
+                "\nGuidelines:\n"
+                "- Keep the follow-up question short and simple.\n"
+                "- Prefer common vocabulary and simple sentence structures.\n"
+                "- If there is a clear single rule causing the mistake, hint it briefly in the follow-up.\n"
+            )
+        else:
+            system_prompt += (
+                "\nGuidelines:\n"
+                "- Keep the follow-up question natural and conversational.\n"
+                "- Use richer vocabulary, but stay understandable.\n"
+                "- Do not add explicit teaching unless the user text is very incorrect.\n"
+            )
         
         # Create a copy of messages without timestamps for the API
         # Only include messages that are either:
@@ -292,84 +439,79 @@ class Bot:
             }
             history_messages.append(message)
 
-        data = {
+        payload = {
             "model": "deepseek-chat",
             "messages": [{"role": "system", "content": system_prompt}] + history_messages,
             "temperature": 0.7,
-            "max_tokens": 300
+            "max_tokens": 300,
         }
 
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(url, headers=headers, json=data) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        response_text = result["choices"][0]["message"]["content"]
-                        return response_text
-                    else:
-                        error_text = await response.text()
-                        logger.error(f"DeepSeek API error {response.status}: {error_text}")
-                        return "Sorry, I encountered an error with the grammar service. Please try again later."
-            except Exception as e:
-                logger.error(f"Network error calling DeepSeek API: {e}")
-                return "Sorry, I encountered an error with the grammar service. Please try again later."
+        return await deepseek_chat_completion(self.api_key, payload)
 
-    async def confirm_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = context.user_data.get("user")
+    async def prompt_language_switch(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user: UserData = context.user_data.get("user")
         detected_lang = context.user_data.get("detected_lang")
+        if not user or not detected_lang:
+            return
 
-        if detected_lang != user.language:
-            await update.message.reply_text(
-                f"Your message is in {detected_lang.upper()}, but your selected language is {user.language.upper()}. "
-                "Would you like to switch the language? (yes/no)"
-            )
-            return CONFIRM_LANGUAGE
-        return None
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("Switch", callback_data=LANG_CONFIRM_SWITCH),
+                    InlineKeyboardButton("Keep", callback_data=LANG_CONFIRM_KEEP),
+                ]
+            ]
+        )
+        await update.message.reply_text(
+            f"Your message looks like {detected_lang.upper()}, but your selected language is {user.language.upper()}. "
+            "Switch?",
+            reply_markup=keyboard,
+        )
 
-    async def handle_language_response(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle the user's response to the language switch prompt."""
-        user = context.user_data.get("user")
-        detected_lang = context.user_data.get("detected_lang")  # Use the stored detected language
-        original_text = context.user_data.get("original_text")  # Get the original message
-        response = update.message.text.strip().lower()
+    async def handle_language_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle inline button for switching/keeping language, then process the stored message."""
+        query = update.callback_query
+        if query:
+            await query.answer()
 
-        if response == "yes":
+        user: UserData = context.user_data.get("user")
+        detected_lang = context.user_data.get("detected_lang")
+        original_text = context.user_data.get("original_text")
+        if not user or not detected_lang or not original_text:
+            return
+
+        if query and query.data == LANG_CONFIRM_SWITCH:
             old_lang = user.language
-            user.language = detected_lang  # Switch to the detected language
-            await self.save_user_data()  # Save the language change
-            await update.message.reply_text(
-                f"Language switched from {old_lang.upper()} to {detected_lang.upper()}. "
-                f"You can now continue chatting in {SUPPORTED_LANGUAGES.get(detected_lang, detected_lang.upper())}"
+            user.language = detected_lang
+            await self.save_user_data()
+            await query.edit_message_text(
+                f"Language switched from {old_lang.upper()} to {detected_lang.upper()}."
             )
-
-            # Process the original message with the new language setting if it exists
-            if original_text:
-                user.add_user_message(original_text)  # Add to history
-                # Process the original message with the new language setting
-                response = await self.call_deepseek_api(user)
-                await update.message.reply_text(response)
-
-        elif response == "no":
-            await update.message.reply_text(
-                f"Keeping the current language ({user.language.upper()}). "
-                f"You can continue chatting in {SUPPORTED_LANGUAGES.get(user.language, user.language.upper())}"
+        elif query and query.data == LANG_CONFIRM_KEEP:
+            await query.edit_message_text(
+                f"Keeping the current language ({user.language.upper()})."
             )
-
-            # Process the original message with the current language setting if it exists
-            if original_text:
-                user.add_user_message(original_text)  # Add to history
-                # Process the original message with the current language setting
-                response = await self.call_deepseek_api(user)
-                await update.message.reply_text(response)
-
         else:
-            await update.message.reply_text("Please respond with 'yes' or 'no'.")
-            return CONFIRM_LANGUAGE  # Stay in the same state
+            return
 
-        # Clear the stored language detection data
+        user.add_user_message(original_text)
+        model_text = await self.call_deepseek_api(user)
+        parsed = parse_model_json_response(model_text)
+        if parsed is None:
+            # Fallback: treat as plain text
+            user.record_message_quality(False)
+            user.add_assistant_message(model_text)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=model_text)
+        else:
+            is_correct = bool(parsed.get("is_correct", False))
+            reply = format_tutor_reply(user.language, original_text, parsed)
+            user.record_message_quality(is_correct)
+            user.add_assistant_message(reply)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=reply)
+
         context.user_data.pop("detected_lang", None)
-        context.user_data.pop("original_text", None)  # Clean up original message
-        return ConversationHandler.END
+        context.user_data.pop("original_text", None)
+        context.user_data.pop("user", None)
 
     async def correct_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
@@ -382,11 +524,9 @@ class Bot:
             await update.message.reply_text(
                 "You've reached the rate limit. Please wait a minute before sending more messages."
             )
-            return
+            return ConversationHandler.END
 
-        user.add_request()
         text = update.message.text
-        user.add_user_message(text)
 
         # Skip language detection for yes/no responses and short messages
         text_lower = text.strip().lower()
@@ -407,27 +547,33 @@ class Bot:
             context.user_data["user"] = user
             context.user_data["detected_lang"] = detected_lang
             context.user_data["original_text"] = text  # Store the original message
-            await self.confirm_language(update, context)
-            return
+            await self.prompt_language_switch(update, context)
+            return ConversationHandler.END
+
+        user.add_user_message(text)
 
         try:
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-            corrected_text = await self.call_deepseek_api(user)
-
-            # Extract just the response part if the message is already correct
-            if corrected_text.startswith(f"[{CORRECTION_LABELS[user.language]} {text}]"):
-                response = corrected_text.split("]")[1].strip()
-                await update.message.reply_text(response)
+            model_text = await self.call_deepseek_api(user)
+            parsed = parse_model_json_response(model_text)
+            if parsed is None:
+                await update.message.reply_text(model_text)
+                user.record_message_quality(False)
+                user.add_assistant_message(model_text)
             else:
-                await update.message.reply_text(corrected_text)
-
-            user.add_assistant_message(corrected_text)
+                reply = format_tutor_reply(user.language, text, parsed)
+                await update.message.reply_text(reply)
+                user.record_message_quality(bool(parsed.get("is_correct", False)))
+                user.add_assistant_message(reply)
 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             await update.message.reply_text(
                 "Sorry, I encountered an error while processing your message. Please try again later."
             )
+            return ConversationHandler.END
+
+        return ConversationHandler.END
 
     async def run(self):
         """Run the bot with proper event loop handling"""
@@ -443,11 +589,14 @@ class Bot:
             application.add_handler(CommandHandler("help", self.help_command))
             application.add_handler(CommandHandler("setlang", self.set_language))
             application.add_handler(CommandHandler("currentlang", self.current_language))
+            application.add_handler(CommandHandler("privacy", self.privacy_command))
+            application.add_handler(CommandHandler("forget", self.forget_command))
+            application.add_handler(CallbackQueryHandler(self.handle_language_callback, pattern="^lang_confirm:"))
 
             conv_handler = ConversationHandler(
                 entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, self.correct_message)],
                 states={
-                    CONFIRM_LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_language_response)],
+                    CONFIRM_LANGUAGE: [],
                 },
                 fallbacks=[],
             )
@@ -473,7 +622,9 @@ class Bot:
             # Proper shutdown sequence
             if 'application' in locals():
                 try:
-                    await application.updater.stop()
+                    updater = getattr(application, "updater", None)
+                    if updater is not None:
+                        await updater.stop()
                     await application.stop()
                     await application.shutdown()
                 except Exception as e:
@@ -486,6 +637,9 @@ if __name__ == "__main__":
         asyncio.run(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
+    except RuntimeError as e:
+        logger.error("%s", e)
+        sys.exit(1)
     except Exception as e:
         logger.error(f"Bot stopped due to error: {e}")
         raise

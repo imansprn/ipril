@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/imansprn/ipril/actions/workflows/bot.yml"><img src="https://github.com/imansprn/ipril/actions/workflows/bot.yml/badge.svg" alt="Tests"></img></a>
   <a href="https://codecov.io/gh/imansprn/ipril"><img src="https://codecov.io/gh/imansprn/ipril/branch/main/graph/badge.svg" alt="Coverage"></img></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10-blue.svg" alt="Python Version"></img></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11-blue.svg" alt="Python Version"></img></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License"></img></a>
 </p>
 
@@ -18,6 +18,9 @@ A Telegram bot that helps users improve their writing in multiple languages usin
 - Grammar correction in 6 languages (English, Spanish, French, German, Italian, Russian)
 - User language preference persistence
 - Rate limiting (15 requests/minute per user)
+- `/privacy` and `/forget` for transparency and clearing chat memory
+- Validated configuration (missing `BOT_TOKEN` / `DEEPSEEK_API_KEY` fails fast)
+- DeepSeek HTTP calls with timeouts
 - Automated daily backups
 - Error handling and logging
 - Unit tests for core functionality
@@ -27,6 +30,8 @@ A Telegram bot that helps users improve their writing in multiple languages usin
 - `/start` - Welcome message with instructions
 - `/setlang [code]` - Change language preference
 - `/currentlang` - Show current language
+- `/privacy` - How your data is used (DeepSeek, local storage)
+- `/forget` - Clear conversation memory (keeps saved language)
 
 ## Example Results
 
@@ -38,7 +43,11 @@ User: /setlang en
 Bot: Language set to English!
 
 User: "Je mange un pomme"
-Bot: "[Correction: Je mange une pomme] What do you like to eat?"
+Bot:
+[Correction: Je mange une pomme]
+Tip: Use "une" for feminine nouns like "pomme".
+Vocab: aimer, manger
+What do you like to eat?
 ```
 
 ### 🇪🇸 Spanish (es)
@@ -56,7 +65,9 @@ User: /setlang fr
 Bot: Langue définie sur français !
 
 User: "Je vais au parc"
-Bot: "[Correction: Je vais au parc] Qu'aimes-tu faire au parc?"
+Bot:
+[Correction: Je vais au parc]
+Qu'aimes-tu faire au parc?
 ```
 
 ### 🇩🇪 German (de)
@@ -134,6 +145,7 @@ The project includes unit tests for core functionality:
 - Rate limiting
 - Bot initialization
 - Data persistence
+- Configuration validation (`config.py`)
 
 Run tests locally:
 ```bash
@@ -143,6 +155,8 @@ pytest tests/ -v
 ## File Structure
 
 - `bot.py` - Main bot implementation
+- `config.py` - Environment settings validation
+- `deepseek_client.py` - DeepSeek API HTTP client (timeouts)
 - `requirements.txt` - Python dependencies
 - `.env` - Environment variables (not in git)
 - `user_data.json` - User preferences storage
