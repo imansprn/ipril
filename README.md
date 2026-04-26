@@ -1,4 +1,4 @@
-# Ipril - Grammar Assistant Bot
+# Ipril - Language Tutor Bot
 
 <p align="center"><img src="https://raw.githubusercontent.com/imansprn/ipril/main/assets/logo.png" width="360"></p>
 
@@ -11,13 +11,14 @@
 
 You can try this bot on Telegram by searching for [@IprilBot](https://t.me/IprilBot) or clicking the link to start a conversation.
 
-A Telegram bot that helps users improve their writing in multiple languages using AI-powered grammar correction.
+A Telegram bot that helps users learn languages through conversation with AI-powered corrections, tips, and follow-up questions.
 
 ## Features
 
 - Grammar correction in 6 languages (English, Spanish, French, German, Italian, Russian)
 - User language preference persistence
 - Rate limiting (15 requests/minute per user)
+- Adaptive conversation difficulty (beginner/intermediate)
 - `/privacy` and `/forget` for transparency and clearing chat memory
 - Validated configuration (missing `BOT_TOKEN` / `DEEPSEEK_API_KEY` fails fast)
 - DeepSeek HTTP calls with timeouts
@@ -42,12 +43,12 @@ Here are some examples of how the bot corrects grammar and engages in conversati
 User: /setlang en
 Bot: Language set to English!
 
-User: "Je mange un pomme"
+User: "I goes to the store"
 Bot:
-[Correction: Je mange une pomme]
-Tip: Use "une" for feminine nouns like "pomme".
-Vocab: aimer, manger
-What do you like to eat?
+[Correction: I go to the store]
+Tip: Use "go" with I/you/we/they (not "goes").
+Vocab: grocery store, to buy
+What do you like to buy there?
 ```
 
 ### 🇪🇸 Spanish (es)
@@ -55,8 +56,12 @@ What do you like to eat?
 User: /setlang es
 Bot: ¡Idioma configurado a español!
 
-User: "I goes to the store"
-Bot: "[Corrección: I go to the store] ¿Qué te gusta comprar en la tienda?"
+User: "Yo ir al parque"
+Bot:
+[Corrección: Yo voy al parque]
+Consejo: El verbo “ir” cambia: yo voy.
+Vocabulario: parque, pasear
+¿Qué te gusta hacer en el parque?
 ```
 
 ### 🇫🇷 French (fr)
@@ -75,8 +80,12 @@ Qu'aimes-tu faire au parc?
 User: /setlang de
 Bot: Sprache auf Deutsch eingestellt!
 
-User: "Io mangiare la pizza"
-Bot: "[Korrektur: Io mangio la pizza] Was isst du gerne?"
+User: "Ich gehen ins Kino"
+Bot:
+[Korrektur: Ich gehe ins Kino]
+Tipp: Das Verb wird konjugiert: ich gehe (nicht „ich gehen“).
+Vokabeln: Kino, gehen
+Welche Filme schaust du gerne?
 ```
 
 ### 🇮🇹 Italian (it)
@@ -84,8 +93,12 @@ Bot: "[Korrektur: Io mangio la pizza] Was isst du gerne?"
 User: /setlang it
 Bot: Lingua impostata su italiano!
 
-User: "Я ходить в магазин"
-Bot: "[Correzione: Я хожу в магазин] Cosa ti piace comprare?"
+User: "Io mangiare la pizza"
+Bot:
+[Correzione: Io mangio la pizza]
+Suggerimento: Il verbo si coniuga: io mangio (non “io mangiare”).
+Vocabolario: pizza, mangiare
+Qual è la tua pizza preferita?
 ```
 
 ### 🇷🇺 Russian (ru)
@@ -93,8 +106,12 @@ Bot: "[Correzione: Я хожу в магазин] Cosa ti piace comprare?"
 User: /setlang ru
 Bot: Язык установлен на русский!
 
-User: "Yo ir al parque"
-Bot: "[Исправление: Yo voy al parque] Что тебе нравится делать в парке?"
+User: "Я ходить в магазин"
+Bot:
+[Исправление: Я хожу в магазин]
+Подсказка: Глагол нужно спрягать: я хожу (не «я ходить»).
+Слова: магазин, покупать
+Что ты обычно покупаешь в магазине?
 ```
 
 The bot not only corrects grammar but also:
@@ -119,6 +136,8 @@ The bot not only corrects grammar but also:
 4. Edit `.env` with your:
    - Telegram Bot Token (from @BotFather)
    - DeepSeek API Key
+
+Note: Messages you send for correction are forwarded to DeepSeek for processing. Avoid sending secrets. See `/privacy` in the bot for details.
 
 ## Local Development
 
@@ -173,6 +192,8 @@ The bot includes comprehensive error handling for:
 - File system operations
 
 All errors are logged to `bot.log` for debugging.
+
+Security note: avoid sharing or committing `bot.log`. Logs may include URLs and snippets from upstream errors.
 
 ## License
 
